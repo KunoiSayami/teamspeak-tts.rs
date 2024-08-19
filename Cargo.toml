@@ -1,0 +1,19 @@
+[package]
+name = "teamspeak-tts"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = {version = "4", features=["derive", "cargo"]}
+anyhow = "1"
+tsclientlib = {git = "https://github.com/ReSpeak/tsclientlib"}
+tsproto = {  git = "https://github.com/ReSpeak/tsclientlib" }
+tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib" }
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+tracing = "0.1"
+log = "0.4"
+tracing-subscriber = "0.3.18"
+tokio-stream = "0.1"
+sdl2 = "0.37"
+audiopus = { version = "0.2" }
