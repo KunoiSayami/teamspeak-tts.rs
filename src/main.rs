@@ -1,48 +1,66 @@
 use std::{io::Cursor, time::Duration};
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use config::Config;
 use futures::prelude::*;
 use symphonia::core::{formats::FormatReader, io::MediaSourceStream};
 use tap::TapFallible;
-use tokio::{io::AsyncReadExt, sync::mpsc};
+use tokio::{
+    io::AsyncReadExt,
+    sync::{broadcast, mpsc},
+};
 use tracing::info;
 
 use tsclientlib::{Connection, DisconnectOptions, Identity, StreamItem};
 use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
+use web::route;
 
 mod config;
+mod tts;
+mod web;
 
-async fn sleep_and_repeat_play(sender: mpsc::Sender<OutPacket>) -> anyhow::Result<()> {
-    let mut file = tokio::fs::File::open("output.opus").await?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf).await?;
-    drop(file);
+#[derive(Clone, PartialEq)]
+enum MainEvent {
+    NewData(Vec<u8>),
+    Exit,
+}
 
-    let source = MediaSourceStream::new(Box::new(Cursor::new(buf)), Default::default());
-
-    let mut reader = symphonia::default::formats::OggReader::try_new(source, &Default::default())?;
-
-    let mut ret = Vec::new();
-    while let Ok(packet) = reader.next_packet() {
-        ret.push(packet.data.to_vec());
+impl MainEvent {
+    pub fn is_not_exit(self) -> bool {
+        self != Self::Exit
     }
+}
 
-    loop {
-        for slice in &ret {
-            sender
-                .send(OutAudio::new(&AudioData::C2S {
-                    id: 0,
-                    codec: tsproto_packets::packets::CodecType::OpusVoice,
-                    data: &slice,
-                }))
-                .await
-                .tap_err(|_| log::error!("Send error"))
-                .ok();
-            tokio::time::sleep(Duration::from_millis(20)).await;
+async fn send_audio(
+    mut receiver: broadcast::Receiver<MainEvent>,
+    sender: mpsc::Sender<OutPacket>,
+) -> anyhow::Result<()> {
+    while let Ok(event) = receiver.recv().await {
+        match event {
+            MainEvent::NewData(bytes) => {
+                let source =
+                    MediaSourceStream::new(Box::new(Cursor::new(bytes)), Default::default());
+
+                let mut reader =
+                    symphonia::default::formats::OggReader::try_new(source, &Default::default())?;
+
+                while let Ok(packet) = reader.next_packet() {
+                    sender
+                        .send(OutAudio::new(&AudioData::C2S {
+                            id: 0,
+                            codec: tsproto_packets::packets::CodecType::OpusVoice,
+                            data: &packet.data,
+                        }))
+                        .await
+                        .tap_err(|_| log::error!("Send error"))
+                        .ok();
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            }
+            MainEvent::Exit => break,
         }
-        tokio::time::sleep(Duration::from_secs(5)).await;
     }
+    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -79,6 +97,13 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
     let id = Identity::new_from_str(config.identity()).unwrap();
     let con_config = con_config.identity(id);
 
+    let (sender, mut recv) = mpsc::channel(16);
+    let (global_sender, global_receiver) = broadcast::channel(16);
+
+    let handler = tokio::spawn(send_audio(global_receiver.resubscribe(), sender));
+
+    let web = tokio::spawn(route(config.clone(), global_sender.clone()));
+
     // Connect
     let mut con = con_config.connect()?;
 
@@ -90,9 +115,6 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
     if let Some(r) = r {
         r?;
     }
-
-    let (sender, mut recv) = mpsc::channel(16);
-    let handler = tokio::spawn(sleep_and_repeat_play(sender));
 
     loop {
         let events = con.events().try_for_each(|e| async {
@@ -110,24 +132,32 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
                     break;
                 }
             }
-            _ = tokio::signal::ctrl_c() => { break; }
+            _ = tokio::signal::ctrl_c() => {
+                break;
+            }
             r = events => {
                 r?;
-                bail!("Disconnected");
             }
         };
     }
 
-    tokio::select! {
-        ret = handler => {
-            ret??;
-        }
-        _ = tokio::time::sleep(Duration::from_millis(100)) => {  }
-    }
-
+    global_sender.send(MainEvent::Exit).ok();
     // Disconnect
     con.disconnect(DisconnectOptions::new())?;
     con.events().for_each(|_| future::ready(())).await;
+
+    tokio::select! {
+        ret = async {
+            handler.await??;
+            web.await??;
+            Ok::<(),anyhow::Error>(())
+        } => {
+            ret?;
+        }
+        _ = async {
+            tokio::signal::ctrl_c().await.unwrap();
+        } => {  }
+    }
 
     Ok(())
 }

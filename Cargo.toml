@@ -21,3 +21,7 @@ symphonia = "0.5"
 serde = {version = "1", features = ["derive"]}
 toml = "0.8"
 tap = "1"
+reqwest = "0.12"
+axum = { version = "0.7", features = ["http2", "macros"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
+kstool-helper-generator = "0.4"
