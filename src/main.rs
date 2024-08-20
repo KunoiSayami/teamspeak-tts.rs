@@ -1,69 +1,82 @@
-//! This example connects to a teamspeak instance and joins a channel.
-//! The connected bot-identity will listen on your microphone and send everything to the current
-//! channel. In parallel, the program will play back all other clients in the channel via its own
-//! audio output.
-//! Microphone -> Channel
-//! Channel -> PC Speakers
+use std::{io::Cursor, time::Duration};
 
 use anyhow::{bail, Result};
-use clap::Parser;
+use config::Config;
 use futures::prelude::*;
-use tokio::sync::mpsc;
-use tokio::task::LocalSet;
-use tracing::{debug, info};
+use symphonia::core::{formats::FormatReader, io::MediaSourceStream};
+use tap::TapFallible;
+use tokio::{io::AsyncReadExt, sync::mpsc};
+use tracing::info;
 
-use tsclientlib::{ClientId, Connection, DisconnectOptions, Identity, StreamItem};
-use tsproto_packets::packets::AudioData;
+use tsclientlib::{Connection, DisconnectOptions, Identity, StreamItem};
+use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
 
-mod audio_utils;
+mod config;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-struct ConnectionId(u64);
+async fn sleep_and_repeat_play(sender: mpsc::Sender<OutPacket>) -> anyhow::Result<()> {
+    let mut file = tokio::fs::File::open("output.opus").await?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).await?;
+    drop(file);
 
-#[derive(Parser, Debug)]
-#[command(author, about)]
-struct Args {
-    /// The address of the server to connect to
-    #[arg(short, long, default_value = "localhost")]
-    address: String,
-    /// The volume for the capturing
-    #[arg(default_value_t = 1.0)]
-    volume: f32,
-    /// Print the content of all packets
-    ///
-    /// 0. Print nothing
-    /// 1. Print command string
-    /// 2. Print packets
-    /// 3. Print udp packets
-    #[arg(short, long, action = clap::ArgAction::Count)]
-    verbose: u8,
+    let source = MediaSourceStream::new(Box::new(Cursor::new(buf)), Default::default());
+
+    let mut reader = symphonia::default::formats::OggReader::try_new(source, &Default::default())?;
+
+    let mut ret = Vec::new();
+    while let Ok(packet) = reader.next_packet() {
+        ret.push(packet.data.to_vec());
+    }
+
+    loop {
+        for slice in &ret {
+            sender
+                .send(OutAudio::new(&AudioData::C2S {
+                    id: 0,
+                    codec: tsproto_packets::packets::CodecType::OpusVoice,
+                    data: &slice,
+                }))
+                .await
+                .tap_err(|_| log::error!("Send error"))
+                .ok();
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    real_main().await
+fn main() -> Result<()> {
+    env_logger::Builder::from_default_env().init();
+    let matches = clap::command!()
+        .args(&[
+            clap::arg!([CONFIG] "Configure file").default_value("config.toml"),
+            clap::arg!(-v --verbose ... "Add log level"),
+        ])
+        .get_matches();
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async_main(
+            matches.get_one::<String>("CONFIG").unwrap(),
+            matches.get_count("verbose"),
+        ))
 }
 
-async fn real_main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+async fn async_main(path: &String, verbose: u8) -> Result<()> {
+    let config = Config::load(path).await?;
 
-    // Parse command line options
-    let args = Args::parse();
-
-    let con_id = ConnectionId(0);
-    let local_set = LocalSet::new();
-    let audiodata = audio_utils::start(&local_set)?;
-
-    let con_config = Connection::build(args.address)
-        .log_commands(args.verbose >= 1)
-        .log_packets(args.verbose >= 2)
-        .log_udp_packets(args.verbose >= 3)
-        .channel_id(tsclientlib::ChannelId(30))
+    let con_config = Connection::build(config.server())
+        .log_commands(verbose >= 1)
+        .log_packets(verbose >= 2)
+        .log_udp_packets(verbose >= 3)
+        .channel_id(tsclientlib::ChannelId(config.channel()))
         .version(tsclientlib::Version::Linux_3_5_6)
-        .name("tts");
+        .name(config.nickname().to_string());
 
     // Optionally set the key of this client, otherwise a new key is generated.
-    let id = Identity::new_from_str(env!("TS_KEY")).unwrap();
+    let id = Identity::new_from_str(config.identity()).unwrap();
     let con_config = con_config.identity(id);
 
     // Connect
@@ -78,28 +91,12 @@ async fn real_main() -> Result<()> {
         r?;
     }
 
-    let (send, mut recv) = mpsc::channel(5);
-    {
-        let mut a2t = audiodata.a2ts.lock().unwrap();
-        a2t.set_listener(send);
-        a2t.set_volume(args.volume);
-        a2t.set_playing(true);
-    }
+    let (sender, mut recv) = mpsc::channel(16);
+    let handler = tokio::spawn(sleep_and_repeat_play(sender));
 
     loop {
-        let t2a = audiodata.ts2a.clone();
         let events = con.events().try_for_each(|e| async {
-            if let StreamItem::Audio(packet) = e {
-                let from = ClientId(match packet.data().data() {
-                    AudioData::S2C { from, .. } => *from,
-                    AudioData::S2CWhisper { from, .. } => *from,
-                    _ => unreachable!("Can only handle S2C packets but got a C2S packet"),
-                });
-                let mut t2a = t2a.lock().unwrap();
-                if let Err(error) = t2a.play_packet((con_id, from), packet) {
-                    debug!(%error, "Failed to play packet");
-                }
-            }
+            if let StreamItem::Audio(_packet) = e {}
             Ok(())
         });
 
@@ -119,6 +116,13 @@ async fn real_main() -> Result<()> {
                 bail!("Disconnected");
             }
         };
+    }
+
+    tokio::select! {
+        ret = handler => {
+            ret??;
+        }
+        _ = tokio::time::sleep(Duration::from_millis(100)) => {  }
     }
 
     // Disconnect
