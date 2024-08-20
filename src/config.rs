@@ -68,18 +68,6 @@ impl TTS {
         &self.ocp_apim_subscription_key
     }
 
-    pub fn lang(&self) -> &str {
-        &self.lang
-    }
-
-    pub fn gender(&self) -> &str {
-        &self.gender
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     pub fn build_ssml(&self, text: &str) -> String {
         format!(
             "<speak version='1.0' xml:lang='en-US'><voice xml:lang='{}' xml:gender='{}'

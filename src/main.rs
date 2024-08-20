@@ -5,11 +5,7 @@ use config::Config;
 use futures::prelude::*;
 use symphonia::core::{formats::FormatReader, io::MediaSourceStream};
 use tap::TapFallible;
-use tokio::{
-    io::AsyncReadExt,
-    sync::{broadcast, mpsc},
-};
-use tracing::info;
+use tokio::sync::{broadcast, mpsc};
 
 use tsclientlib::{Connection, DisconnectOptions, Identity, StreamItem};
 use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
@@ -128,7 +124,7 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
                 if let Some(packet) = send_audio {
                     con.send_audio(packet)?;
                 } else {
-                    info!("Audio sending stream was canceled");
+                    log::info!("Audio sending stream was canceled");
                     break;
                 }
             }

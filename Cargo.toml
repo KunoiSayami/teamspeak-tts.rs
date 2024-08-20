@@ -1,27 +1,22 @@
 [package]
 name = "teamspeak-tts"
-version = "0.1.0"
+version = "1.0.0-rc"
 edition = "2021"
 
 [dependencies]
-clap = {version = "4", features=["derive", "cargo"]}
 anyhow = "1"
-tsclientlib = {git = "https://github.com/ReSpeak/tsclientlib"}
-tsproto = {  git = "https://github.com/ReSpeak/tsclientlib" }
-tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib" }
-tokio = { version = "1", features = ["full"] }
-futures = "0.3"
-tracing = "0.1"
-log = "0.4"
-tracing-subscriber = "0.3.18"
-tokio-stream = "0.1"
-audiopus = { version = "0.2" }
-env_logger = "0.11"
-symphonia = "0.5"
-serde = {version = "1", features = ["derive"]}
-toml = "0.8"
-tap = "1"
-reqwest = "0.12"
 axum = { version = "0.7", features = ["http2", "macros"] }
-axum-extra = { version = "0.9", features = ["typed-header"] }
-kstool-helper-generator = "0.4"
+clap = { version = "4", features = ["derive", "cargo"] }
+env_logger = "0.11"
+futures = "0.3"
+log = "0.4"
+reqwest = "0.12"
+serde = { version = "1", features = ["derive"] }
+symphonia = "0.5"
+tap = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+toml = "0.8"
+tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib" }
+tsproto = { git = "https://github.com/ReSpeak/tsclientlib" }
+tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib" }

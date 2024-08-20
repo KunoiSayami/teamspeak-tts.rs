@@ -1,10 +1,6 @@
 use std::sync::Arc;
 
-use axum::{
-    response::{Html, IntoResponse},
-    Extension, Form,
-};
-use futures::channel::mpsc::Sender;
+use axum::{response::Html, Extension, Form};
 use serde::Deserialize;
 use tokio::sync::broadcast;
 
