@@ -9,7 +9,10 @@ axum = { version = "0.7", features = ["http2", "macros"] }
 clap = { version = "4", features = ["derive", "cargo"] }
 env_logger = "0.11"
 futures = "0.3"
-log = "0.4"
+log = { version = "0.4", features = [
+    "max_level_trace",
+    "release_max_level_debug",
+] }
 reqwest = "0.12"
 serde = { version = "1", features = ["derive"] }
 symphonia = "0.5"
@@ -22,6 +25,8 @@ tsproto = { git = "https://github.com/ReSpeak/tsclientlib" }
 tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib" }
 rand = "0.8"
 spin_sleep = { version = "1.2.1", optional = true }
+rusty-leveldb = { version = "3.0.0" }
+kstool-helper-generator = "0.4.4"
 
 [features]
 spin-sleep = ["spin_sleep"]

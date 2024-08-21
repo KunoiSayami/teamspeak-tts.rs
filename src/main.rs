@@ -1,67 +1,16 @@
-use std::{io::Cursor, time::Duration};
-
 use anyhow::Result;
 use config::Config;
 use futures::prelude::*;
-use symphonia::core::{formats::FormatReader, io::MediaSourceStream};
-use tap::TapFallible;
 use tokio::sync::{broadcast, mpsc};
 
 use tsclientlib::{Connection, DisconnectOptions, Identity, StreamItem};
-use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
+use tts::MainEvent;
 use web::route;
 
+pub mod cache;
 mod config;
 mod tts;
 mod web;
-
-#[derive(Clone, PartialEq)]
-enum MainEvent {
-    NewData(Vec<u8>),
-    Exit,
-}
-
-impl MainEvent {
-    pub fn is_not_exit(self) -> bool {
-        self != Self::Exit
-    }
-}
-
-async fn send_audio(
-    mut receiver: broadcast::Receiver<MainEvent>,
-    sender: mpsc::Sender<OutPacket>,
-) -> anyhow::Result<()> {
-    while let Ok(event) = receiver.recv().await {
-        match event {
-            MainEvent::NewData(bytes) => {
-                let source =
-                    MediaSourceStream::new(Box::new(Cursor::new(bytes)), Default::default());
-
-                let mut reader =
-                    symphonia::default::formats::OggReader::try_new(source, &Default::default())?;
-
-                while let Ok(packet) = reader.next_packet() {
-                    sender
-                        .send(OutAudio::new(&AudioData::C2S {
-                            id: 0,
-                            codec: tsproto_packets::packets::CodecType::OpusVoice,
-                            data: &packet.data,
-                        }))
-                        .await
-                        .tap_err(|_| log::error!("Send error"))
-                        .ok();
-                    #[cfg(feature = "spin-sleep")]
-                    tokio::task::spawn_blocking(|| spin_sleep::sleep(Duration::from_millis(20)))
-                        .await?;
-                    #[cfg(not(feature = "spin-sleep"))]
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                }
-            }
-            MainEvent::Exit => break,
-        }
-    }
-    Ok(())
-}
 
 fn init_log(verbose: u8) {
     let mut logger = env_logger::Builder::from_default_env();
@@ -108,22 +57,22 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
 
     config.validate()?;
 
-    let con_config = Connection::build(config.server())
+    let con_config = Connection::build(config.teamspeak().server())
         .log_commands(verbose >= 1)
         .log_packets(verbose >= 2)
         .log_udp_packets(verbose >= 3)
-        .channel_id(tsclientlib::ChannelId(config.channel()))
+        .channel_id(tsclientlib::ChannelId(config.teamspeak().channel()))
         .version(tsclientlib::Version::Linux_3_5_6)
-        .name(config.nickname().to_string());
+        .name(config.teamspeak().nickname().to_string());
 
     // Optionally set the key of this client, otherwise a new key is generated.
-    let id = Identity::new_from_str(config.identity()).unwrap();
+    let id = Identity::new_from_str(config.teamspeak().identity()).unwrap();
     let con_config = con_config.identity(id);
 
     let (sender, mut recv) = mpsc::channel(16);
     let (global_sender, global_receiver) = broadcast::channel(16);
 
-    let handler = tokio::spawn(send_audio(global_receiver.resubscribe(), sender));
+    let handler = tokio::spawn(tts::send_audio(global_receiver.resubscribe(), sender));
 
     let web = tokio::spawn(route(config.clone(), global_sender.clone()));
 
@@ -184,7 +133,9 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
         }
         _ = async {
             tokio::signal::ctrl_c().await.unwrap();
-        } => {  }
+        } => {
+            log::warn!("Force exit main function");
+        }
     }
 
     Ok(())

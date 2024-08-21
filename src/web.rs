@@ -4,7 +4,7 @@ use axum::{response::Html, Extension, Json};
 use serde::Deserialize;
 use tokio::sync::broadcast;
 
-use crate::{config::Config, tts::Client, MainEvent};
+use crate::{config::Config, tts::Requester, MainEvent};
 
 const INDEX_PAGE: &str = include_str!("index.html");
 
@@ -16,7 +16,7 @@ pub struct Data {
 pub async fn route(config: Config, broadcast: broadcast::Sender<MainEvent>) -> anyhow::Result<()> {
     let inner_broadcast = Arc::new(broadcast.clone());
 
-    let client = Client::new(config.tts().clone());
+    let client = Requester::new(config.tts().clone());
 
     let router = axum::Router::new()
         .route(
@@ -46,7 +46,7 @@ pub async fn route(config: Config, broadcast: broadcast::Sender<MainEvent>) -> a
 
 async fn handler(
     Extension(sender): Extension<Arc<broadcast::Sender<MainEvent>>>,
-    Extension(requester): Extension<Arc<Client>>,
+    Extension(requester): Extension<Arc<Requester>>,
     Json(data): Json<Data>,
 ) -> Result<Html<&'static str>, String> {
     let data = requester

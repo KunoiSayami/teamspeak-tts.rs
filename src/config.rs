@@ -35,14 +35,7 @@ impl<T> ArrayOrSingle<T> {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Config {
-    #[serde(alias = "key")]
-    identity: String,
-    server: String,
-    #[serde(default = "default_nickname")]
-    nickname: String,
-    #[serde(default)]
-    channel: u64,
-
+    teamspeak: TeamSpeak,
     tts: TTS,
     web: Web,
 }
@@ -52,6 +45,35 @@ impl Config {
         Ok(toml::from_str(read_to_string(path).await?.as_str())?)
     }
 
+    pub fn tts(&self) -> &TTS {
+        &self.tts
+    }
+
+    pub fn web(&self) -> &Web {
+        &self.web
+    }
+
+    pub fn validate(&self) -> anyhow::Result<()> {
+        self.tts.validate().map_err(|e| anyhow!(e))
+    }
+
+    pub fn teamspeak(&self) -> &TeamSpeak {
+        &self.teamspeak
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TeamSpeak {
+    #[serde(alias = "key")]
+    identity: String,
+    server: String,
+    #[serde(default = "default_nickname")]
+    nickname: String,
+    #[serde(default)]
+    channel: u64,
+}
+
+impl TeamSpeak {
     pub fn identity(&self) -> &str {
         &self.identity
     }
@@ -66,18 +88,6 @@ impl Config {
 
     pub fn channel(&self) -> u64 {
         self.channel
-    }
-
-    pub fn tts(&self) -> &TTS {
-        &self.tts
-    }
-
-    pub fn web(&self) -> &Web {
-        &self.web
-    }
-
-    pub fn validate(&self) -> anyhow::Result<()> {
-        self.tts.validate().map_err(|e| anyhow!(e))
     }
 }
 
@@ -102,10 +112,11 @@ impl TTS {
 
     pub fn build_ssml(&self, text: &str) -> String {
         format!(
-            "<speak version='1.0' xml:lang='en-US'><voice xml:lang='{}' xml:gender='{}'
-    name='{}'> {text}
-</voice></speak>",
-            self.lang, self.gender, self.name,
+            "<speak version='1.0' xml:lang='en-US'><voice xml:lang='{}' xml:gender='{}' name='{}'>{}</voice></speak>",
+            self.lang,
+            self.gender,
+            self.name,
+            text.trim()
         )
     }
 

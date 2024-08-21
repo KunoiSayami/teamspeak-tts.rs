@@ -1,13 +1,67 @@
+use std::{io::Cursor, time::Duration};
+
 use reqwest::header::{HeaderMap, CONTENT_LENGTH, CONTENT_TYPE, USER_AGENT};
+use symphonia::core::{formats::FormatReader, io::MediaSourceStream};
+use tap::TapFallible;
+use tokio::sync::{broadcast, mpsc};
+use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
 
 use crate::config::TTS;
 
-pub struct Client {
+#[derive(Clone, PartialEq)]
+pub(crate) enum MainEvent {
+    NewData(Vec<u8>),
+    Exit,
+}
+
+impl MainEvent {
+    pub fn is_not_exit(self) -> bool {
+        self != Self::Exit
+    }
+}
+
+pub(crate) async fn send_audio(
+    mut receiver: broadcast::Receiver<MainEvent>,
+    sender: mpsc::Sender<OutPacket>,
+) -> anyhow::Result<()> {
+    while let Ok(event) = receiver.recv().await {
+        match event {
+            MainEvent::NewData(bytes) => {
+                let source =
+                    MediaSourceStream::new(Box::new(Cursor::new(bytes)), Default::default());
+
+                let mut reader =
+                    symphonia::default::formats::OggReader::try_new(source, &Default::default())?;
+
+                while let Ok(packet) = reader.next_packet() {
+                    sender
+                        .send(OutAudio::new(&AudioData::C2S {
+                            id: 0,
+                            codec: tsproto_packets::packets::CodecType::OpusVoice,
+                            data: &packet.data,
+                        }))
+                        .await
+                        .tap_err(|_| log::error!("Send error"))
+                        .ok();
+                    #[cfg(feature = "spin-sleep")]
+                    tokio::task::spawn_blocking(|| spin_sleep::sleep(Duration::from_millis(20)))
+                        .await?;
+                    #[cfg(not(feature = "spin-sleep"))]
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            }
+            MainEvent::Exit => break,
+        }
+    }
+    Ok(())
+}
+
+pub struct Requester {
     inner: reqwest::Client,
     tts: TTS,
 }
 
-impl Client {
+impl Requester {
     pub fn new(tts: TTS) -> Self {
         Self {
             inner: reqwest::ClientBuilder::new()
