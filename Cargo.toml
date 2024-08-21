@@ -1,6 +1,6 @@
 [package]
 name = "teamspeak-tts"
-version = "1.0.0-rc"
+version = "1.0.0-rc.2"
 edition = "2021"
 
 [dependencies]
@@ -20,3 +20,4 @@ toml = "0.8"
 tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib" }
 tsproto = { git = "https://github.com/ReSpeak/tsclientlib" }
 tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib" }
+rand = "0.8"

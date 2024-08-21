@@ -37,6 +37,7 @@ impl Client {
 
     pub async fn request(&self, text: &str) -> reqwest::Result<Vec<u8>> {
         let ssml = self.tts.build_ssml(text);
+        log::trace!("Request ssml: {ssml:?}");
         let mut ret = self
             .inner
             .post(self.tts.endpoint())
@@ -44,7 +45,7 @@ impl Client {
             .headers(self.build_headers(ssml.len()))
             .send()
             .await?;
-        log::debug!("{ret:?}");
+        log::debug!("Api response: {}", ret.status());
 
         let mut v = Vec::new();
 

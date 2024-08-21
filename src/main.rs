@@ -59,14 +59,28 @@ async fn send_audio(
     Ok(())
 }
 
+fn init_log(verbose: u8) {
+    let mut logger = env_logger::Builder::from_default_env();
+    if verbose < 2 {
+        logger.filter_module("tsproto::license", log::LevelFilter::Warn);
+    }
+    if verbose < 3 {
+        logger
+            .filter_module("tracing::span", log::LevelFilter::Warn)
+            .filter_module("tsproto::resend", log::LevelFilter::Warn);
+    }
+    logger.init();
+}
+
 fn main() -> Result<()> {
-    env_logger::Builder::from_default_env().init();
     let matches = clap::command!()
         .args(&[
             clap::arg!([CONFIG] "Configure file").default_value("config.toml"),
             clap::arg!(-v --verbose ... "Add log level"),
         ])
         .get_matches();
+
+    init_log(matches.get_count("verbose"));
 
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -80,6 +94,8 @@ fn main() -> Result<()> {
 
 async fn async_main(path: &String, verbose: u8) -> Result<()> {
     let config = Config::load(path).await?;
+
+    config.validate()?;
 
     let con_config = Connection::build(config.server())
         .log_commands(verbose >= 1)
@@ -103,20 +119,17 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
     // Connect
     let mut con = con_config.connect()?;
 
-    let r = con
+    if let Some(r) = con
         .events()
         .try_filter(|e| future::ready(matches!(e, StreamItem::BookEvents(_))))
         .next()
-        .await;
-    if let Some(r) = r {
+        .await
+    {
         r?;
     }
 
     loop {
-        let events = con.events().try_for_each(|e| async {
-            if let StreamItem::Audio(_packet) = e {}
-            Ok(())
-        });
+        let events = con.events().try_for_each(|_| async { Ok(()) });
 
         // Wait for ctrl + c
         tokio::select! {

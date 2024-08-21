@@ -19,8 +19,12 @@ channel = 0
 [tts]
 # Azure TTS endpoint, you should parse your zone url in this field
 endpoint = ""
-# Azure TTS api key
+
+# Azure TTS API key
 Ocp-Apim-Subscription-Key = ""
+# or load balance
+# Ocp-Apim-Subscription-Key = ["baa", "foo"]
+
 # Rest of field definition in API document
 # https://learn.microsoft.com/en-us/azure/ai-services/speech-service/rest-text-to-speech
 lang = "en-US"
