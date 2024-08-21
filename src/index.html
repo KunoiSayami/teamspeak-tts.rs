@@ -1,15 +1,55 @@
 <!DOCTYPE html>
 <html>
-   <head>
-      <title>TTS</title>
-   </head>
-   <body>
-      <form action="/" method="post">
-         TTS
-         <br>
-         <textarea id="text" rows="5" cols="60" name="content"></textarea>
-         <br>
-         <button onclick="" type="submit" value="submit" >submit</button>
-      </form>
-   </body>
+
+<head>
+   <title>TTS</title>
+</head>
+<script>
+
+   function submit() {
+      let value = document.getElementById("text").value;
+      let r = new XMLHttpRequest();
+      r.open("POST", "/", true);
+      r.setRequestHeader("Content-Type", "application/json");
+      r.onreadystatechange = () => {
+         if (r.readyState != 4 || r.status != 200) {
+            document.getElementById("head-message").style.display = "inline";
+            setTimeout(() => {
+               document.getElementById("head-message").style.display = "none";
+            }, 3000);
+            return;
+         }
+      };
+      r.send(JSON.stringify({ content: value }));
+   }
+
+   function clearText() {
+      document.getElementById("text").value = "";
+   }
+
+   function saveText() {
+      let value = document.getElementById("text").value;
+      window.localStorage.setItem("tts", value);
+      setTimeout(saveText, 3000);
+   }
+
+   document.addEventListener("DOMContentLoaded", function (event) {
+      let s = window.localStorage.getItem("tts");
+      if (s !== null) {
+         document.getElementById("text").value = s;
+      }
+      setTimeout(saveText, 3000);
+   });
+</script>
+
+<body>
+   <span id="head-message" style="display: none;">Send success</span>
+   <br>
+   <textarea id="text" rows="5" cols="60" name="content"></textarea>
+   <br>
+   <button onclick="submit()">submit</button>
+   <button onclick="clearText()">clear</button>
+
+</body>
+
 </html>

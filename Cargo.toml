@@ -1,6 +1,6 @@
 [package]
 name = "teamspeak-tts"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 edition = "2021"
 
 [dependencies]
@@ -21,3 +21,8 @@ tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib" }
 tsproto = { git = "https://github.com/ReSpeak/tsclientlib" }
 tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib" }
 rand = "0.8"
+spin_sleep = { version = "1.2.1", optional = true }
+
+[features]
+spin-sleep = ["spin_sleep"]
+full = ["spin-sleep"]

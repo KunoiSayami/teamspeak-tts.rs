@@ -50,6 +50,10 @@ async fn send_audio(
                         .await
                         .tap_err(|_| log::error!("Send error"))
                         .ok();
+                    #[cfg(feature = "spin-sleep")]
+                    tokio::task::spawn_blocking(|| spin_sleep::sleep(Duration::from_millis(20)))
+                        .await?;
+                    #[cfg(not(feature = "spin-sleep"))]
                     tokio::time::sleep(Duration::from_millis(20)).await;
                 }
             }
@@ -61,8 +65,15 @@ async fn send_audio(
 
 fn init_log(verbose: u8) {
     let mut logger = env_logger::Builder::from_default_env();
+    if verbose < 1 {
+        logger.filter_module("trust_dns_proto", log::LevelFilter::Warn);
+    }
     if verbose < 2 {
-        logger.filter_module("tsproto::license", log::LevelFilter::Warn);
+        logger
+            .filter_module("tsproto::license", log::LevelFilter::Warn)
+            .filter_module("reqwest::connect", log::LevelFilter::Warn)
+            .filter_module("axum::serve", log::LevelFilter::Warn)
+            .filter_module("hyper_util::client", log::LevelFilter::Warn);
     }
     if verbose < 3 {
         logger
@@ -144,8 +155,16 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
             _ = tokio::signal::ctrl_c() => {
                 break;
             }
-            r = events => {
-                r?;
+            /* ret = async {
+                while let Some(event) = con.events().next().await {
+                    event?;
+                }
+                Ok::<(), tsclientlib::Error>(())
+            } => {
+                ret?;
+            } */
+            ret = events => {
+                ret?;
             }
         };
     }
