@@ -72,9 +72,11 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
     let (sender, mut recv) = mpsc::channel(16);
     let (global_sender, global_receiver) = broadcast::channel(16);
 
+    let (cache_handler, leveldb_helper) = cache::LevelDB::connect(config.leveldb().to_string());
+
     let handler = tokio::spawn(tts::send_audio(global_receiver.resubscribe(), sender));
 
-    let web = tokio::spawn(route(config.clone(), global_sender.clone()));
+    let web = tokio::spawn(route(config.clone(), leveldb_helper, global_sender.clone()));
 
     // Connect
     let mut con = con_config.connect()?;
@@ -137,6 +139,7 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
             log::warn!("Force exit main function");
         }
     }
+    cache_handler.disconnect().await?;
 
     Ok(())
 }

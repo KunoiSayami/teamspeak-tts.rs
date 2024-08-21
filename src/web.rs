@@ -4,7 +4,7 @@ use axum::{response::Html, Extension, Json};
 use serde::Deserialize;
 use tokio::sync::broadcast;
 
-use crate::{config::Config, tts::Requester, MainEvent};
+use crate::{cache::ConnAgent, config::Config, tts::Requester, MainEvent};
 
 const INDEX_PAGE: &str = include_str!("index.html");
 
@@ -13,7 +13,11 @@ pub struct Data {
     content: String,
 }
 
-pub async fn route(config: Config, broadcast: broadcast::Sender<MainEvent>) -> anyhow::Result<()> {
+pub async fn route(
+    config: Config,
+    leveldb_helper: ConnAgent,
+    broadcast: broadcast::Sender<MainEvent>,
+) -> anyhow::Result<()> {
     let inner_broadcast = Arc::new(broadcast.clone());
 
     let client = Requester::new(config.tts().clone());
@@ -30,7 +34,8 @@ pub async fn route(config: Config, broadcast: broadcast::Sender<MainEvent>) -> a
             }),
         ) */
         .layer(Extension(inner_broadcast))
-        .layer(Extension(Arc::new(client)));
+        .layer(Extension(Arc::new(client)))
+        .layer(Extension(Arc::new(leveldb_helper)));
 
     let listener = tokio::net::TcpListener::bind(config.web().bind()).await?;
 
@@ -47,15 +52,20 @@ pub async fn route(config: Config, broadcast: broadcast::Sender<MainEvent>) -> a
 async fn handler(
     Extension(sender): Extension<Arc<broadcast::Sender<MainEvent>>>,
     Extension(requester): Extension<Arc<Requester>>,
+    Extension(leveldb_helper): Extension<ConnAgent>,
     Json(data): Json<Data>,
-) -> Result<Html<&'static str>, String> {
-    let data = requester
-        .request(&data.content)
-        .await
-        .map_err(|e| e.to_string())?;
+) -> Result<(), String> {
+    let data = match leveldb_helper.get(data.content.clone()).await {
+        Some(data) => data,
+        None => requester
+            .request(&data.content)
+            .await
+            .map_err(|e| e.to_string())?,
+    };
+
     //log::debug!("Data length: {}", data.len());
     if !data.is_empty() {
         sender.send(MainEvent::NewData(data)).ok();
     }
-    Ok(Html(INDEX_PAGE))
+    Ok(())
 }

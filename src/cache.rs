@@ -22,7 +22,7 @@ kstool_helper_generator::oneshot_helper! {
     pub enum DatabaseEvent {
         #[ret(Result<()>)]
         Set(String, String),
-        #[ret(std::result::Result<Option<String>, std::string::FromUtf8Error>)]
+        #[ret(Option<Vec<u8>>)]
         Get(
             String,
         ),
@@ -73,12 +73,7 @@ impl LevelDB {
                     db.flush()?;
                 }
                 DatabaseEvent::Get(k, sender) => {
-                    sender
-                        .send(
-                            db.get(k.as_bytes())
-                                .map_or(Ok(None), |bytes| String::from_utf8(bytes).map(Some)),
-                        )
-                        .ok();
+                    sender.send(db.get(k.as_bytes())).ok();
                 }
                 DatabaseEvent::Delete(k, sender) => {
                     sender.send(db.delete(k.as_bytes())).ok();
@@ -119,7 +114,7 @@ impl LevelDB {
 }
 
 impl ConnAgent {
-    async fn set(&mut self, key: String, value: String) -> anyhow::Result<Option<()>> {
+    pub async fn set(&self, key: String, value: String) -> anyhow::Result<Option<()>> {
         self.0
             .set(key.to_string(), value.to_string())
             .await
@@ -127,16 +122,14 @@ impl ConnAgent {
         Ok(Some(()))
     }
 
-    async fn delete(&mut self, key: String) -> anyhow::Result<()> {
+    #[cfg(test)]
+    pub async fn delete(&self, key: String) -> anyhow::Result<()> {
         self.0.delete(key.to_string()).await;
         Ok(())
     }
 
-    async fn get(&mut self, key: String) -> anyhow::Result<Option<String>> {
-        self.0
-            .get(key.to_string())
-            .await
-            .map_or(Ok(None), |v| v.map_err(anyhow::Error::from))
+    pub async fn get(&self, key: String) -> Option<Vec<u8>> {
+        self.0.get(key.to_string()).await.flatten()
     }
 }
 
@@ -146,15 +139,15 @@ mod test {
     use super::{ConnAgent, LevelDB};
 
     async fn async_test_leveldb(agent: ConnAgent) -> anyhow::Result<()> {
-        let mut conn = agent.clone();
+        let conn = agent.clone();
         conn.set("key".to_string(), "value".to_string()).await?;
         assert_eq!(
-            conn.get("key".to_string()).await?,
-            Some("value".to_string())
+            conn.get("key".to_string()).await,
+            Some("value".as_bytes().to_vec())
         );
         conn.set("key".to_string(), "value".to_string()).await?;
         conn.delete("key".to_string()).await?;
-        assert_eq!(conn.get("key".to_string()).await?, None);
+        assert_eq!(conn.get("key".to_string()).await, None);
 
         Ok(())
     }

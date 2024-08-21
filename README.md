@@ -7,13 +7,16 @@ This bot can help you use TTS service in TeamSpeak. TTS service is powered by [A
 In order to use this bot, you need an Azure subscription. Don't worry, Microsoft gives every user [0.5 million characters free per month](https://azure.microsoft.com/en-us/pricing/details/cognitive-services/speech-services/), it's enough.
 
 ```toml
-# TeamSpeak identify key
+# Level DB filename (use for cache)
+leveldb = "tts.db"
+[teamspeak]
+# Identify key
 key = ""
-# TeamSpeak server
+
 server = ""
-# TeamSpeak bot nickname
+
 #nickname = ""
-# TeamSpeak default channel
+# Default channel ID
 channel = 0
 
 [tts]
