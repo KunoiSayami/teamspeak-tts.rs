@@ -39,6 +39,8 @@
          document.getElementById("text").value = s;
       }
       setTimeout(saveText, 3000);
+
+      document.getElementById('text').addEventListener('keydown', e => { if (e.ctrlKey && e.keyCode === 13) submit(); })
    });
 </script>
 

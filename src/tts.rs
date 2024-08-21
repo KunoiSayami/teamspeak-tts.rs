@@ -3,30 +3,24 @@ use std::{io::Cursor, time::Duration};
 use reqwest::header::{HeaderMap, CONTENT_LENGTH, CONTENT_TYPE, USER_AGENT};
 use symphonia::core::{formats::FormatReader, io::MediaSourceStream};
 use tap::TapFallible;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
 
 use crate::config::TTS;
 
-#[derive(Clone, PartialEq)]
-pub(crate) enum MainEvent {
+#[derive(Clone)]
+pub(crate) enum TTSEvent {
     NewData(Vec<u8>),
     Exit,
 }
 
-impl MainEvent {
-    pub fn is_not_exit(self) -> bool {
-        self != Self::Exit
-    }
-}
-
 pub(crate) async fn send_audio(
-    mut receiver: broadcast::Receiver<MainEvent>,
+    mut receiver: mpsc::Receiver<TTSEvent>,
     sender: mpsc::Sender<OutPacket>,
 ) -> anyhow::Result<()> {
-    while let Ok(event) = receiver.recv().await {
+    while let Some(event) = receiver.recv().await {
         match event {
-            MainEvent::NewData(bytes) => {
+            TTSEvent::NewData(bytes) => {
                 let source =
                     MediaSourceStream::new(Box::new(Cursor::new(bytes)), Default::default());
 
@@ -50,7 +44,7 @@ pub(crate) async fn send_audio(
                     tokio::time::sleep(Duration::from_millis(20)).await;
                 }
             }
-            MainEvent::Exit => break,
+            TTSEvent::Exit => break,
         }
     }
     Ok(())

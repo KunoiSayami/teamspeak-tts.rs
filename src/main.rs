@@ -4,31 +4,35 @@ use futures::prelude::*;
 use tokio::sync::{broadcast, mpsc};
 
 use tsclientlib::{Connection, DisconnectOptions, Identity, StreamItem};
-use tts::MainEvent;
+use types::MainEvent;
 use web::route;
 
 pub mod cache;
 mod config;
 mod tts;
+mod types;
 mod web;
 
 fn init_log(verbose: u8) {
     let mut logger = env_logger::Builder::from_default_env();
     if verbose < 1 {
         logger.filter_module("symphonia_format_ogg", log::LevelFilter::Warn);
-    } else if verbose < 2 {
+    }
+    if verbose < 2 {
         logger
             .filter_module("hickory_proto", log::LevelFilter::Warn)
             .filter_module("hickory_resolver", log::LevelFilter::Warn)
             .filter_module("trust_dns_proto", log::LevelFilter::Warn);
-    } else if verbose < 3 {
+    }
+    if verbose < 3 {
         logger
             .filter_module("tsproto::license", log::LevelFilter::Warn)
             .filter_module("tsproto::client", log::LevelFilter::Warn)
             .filter_module("reqwest::connect", log::LevelFilter::Warn)
             .filter_module("axum::serve", log::LevelFilter::Warn)
             .filter_module("hyper_util::client", log::LevelFilter::Warn);
-    } else if verbose < 4 {
+    }
+    if verbose < 4 {
         logger
             .filter_module("tracing::span", log::LevelFilter::Warn)
             .filter_module("h2", log::LevelFilter::Warn)
@@ -73,14 +77,20 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
     let id = Identity::new_from_str(config.teamspeak().identity()).unwrap();
     let con_config = con_config.identity(id);
 
-    let (sender, mut recv) = mpsc::channel(16);
+    let (teamspeak_sender, mut teamspeak_recv) = mpsc::channel(16);
+    let (audio_sender, audio_receiver) = mpsc::channel(32);
     let (global_sender, global_receiver) = broadcast::channel(16);
 
     let (cache_handler, leveldb_helper) = cache::LevelDB::connect(config.leveldb().to_string());
 
-    let handler = tokio::spawn(tts::send_audio(global_receiver.resubscribe(), sender));
+    let handler = tokio::spawn(tts::send_audio(audio_receiver, teamspeak_sender));
 
-    let web = tokio::spawn(route(config.clone(), leveldb_helper, global_sender.clone()));
+    let web = tokio::spawn(route(
+        config.clone(),
+        leveldb_helper,
+        audio_sender.clone(),
+        global_receiver.resubscribe(),
+    ));
 
     // Connect
     let mut con = con_config.connect()?;
@@ -98,7 +108,7 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
         let events = con.events().try_for_each(|_| async { Ok(()) });
 
         tokio::select! {
-            send_audio = recv.recv() => {
+            send_audio = teamspeak_recv.recv() => {
                 if let Some(packet) = send_audio {
                     con.send_audio(packet)?;
                 } else {
@@ -116,6 +126,7 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
     }
 
     global_sender.send(MainEvent::Exit).ok();
+    audio_sender.send(tts::TTSEvent::Exit).await.ok();
     // Disconnect
     con.disconnect(DisconnectOptions::new())?;
     con.events().for_each(|_| future::ready(())).await;

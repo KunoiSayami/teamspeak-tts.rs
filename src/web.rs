@@ -2,9 +2,14 @@ use std::sync::Arc;
 
 use axum::{response::Html, Extension, Json};
 use serde::Deserialize;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
-use crate::{cache::ConnAgent, config::Config, tts::Requester, MainEvent};
+use crate::{
+    cache::ConnAgent,
+    config::Config,
+    tts::{Requester, TTSEvent},
+    MainEvent,
+};
 
 const INDEX_PAGE: &str = include_str!("index.html");
 
@@ -16,10 +21,9 @@ pub struct Data {
 pub async fn route(
     config: Config,
     leveldb_helper: ConnAgent,
-    broadcast: broadcast::Sender<MainEvent>,
+    tts_event_sender: mpsc::Sender<TTSEvent>,
+    mut broadcast: broadcast::Receiver<MainEvent>,
 ) -> anyhow::Result<()> {
-    let inner_broadcast = Arc::new(broadcast.clone());
-
     let client = Requester::new(config.tts().clone());
 
     let router = axum::Router::new()
@@ -33,7 +37,7 @@ pub async fn route(
                 log::debug!("Post data: {data:?}")
             }),
         ) */
-        .layer(Extension(inner_broadcast))
+        .layer(Extension(Arc::new(tts_event_sender)))
         .layer(Extension(Arc::new(client)))
         .layer(Extension(Arc::new(leveldb_helper)));
 
@@ -41,8 +45,7 @@ pub async fn route(
 
     axum::serve(listener, router)
         .with_graceful_shutdown(async move {
-            let mut recv = broadcast.subscribe();
-            while recv.recv().await.is_ok_and(MainEvent::is_not_exit) {}
+            while broadcast.recv().await.is_ok_and(MainEvent::is_not_exit) {}
             tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         })
         .await?;
@@ -50,7 +53,7 @@ pub async fn route(
 }
 
 async fn handler(
-    Extension(sender): Extension<Arc<broadcast::Sender<MainEvent>>>,
+    Extension(sender): Extension<Arc<mpsc::Sender<TTSEvent>>>,
     Extension(requester): Extension<Arc<Requester>>,
     Extension(leveldb_helper): Extension<Arc<ConnAgent>>,
     Json(data): Json<Data>,
@@ -72,7 +75,7 @@ async fn handler(
 
     //log::debug!("Data length: {}", data.len());
     if !data.is_empty() {
-        sender.send(MainEvent::NewData(data)).ok();
+        sender.send(TTSEvent::NewData(data)).await.ok();
     }
     Ok(())
 }
