@@ -21,7 +21,7 @@ kstool_helper_generator::oneshot_helper! {
 
     pub enum DatabaseEvent {
         #[ret(Result<()>)]
-        Set(String, String),
+        Set(String, Vec<u8>),
         #[ret(Option<Vec<u8>>)]
         Get(
             String,
@@ -68,7 +68,7 @@ impl LevelDB {
         while let Some(event) = recv.blocking_recv() {
             match event {
                 DatabaseEvent::Set(k, v, sender) => {
-                    let ret = db.put(k.as_bytes(), v.as_bytes());
+                    let ret = db.put(k.as_bytes(), &v);
                     sender.send(ret).ok();
                     db.flush()?;
                 }
@@ -114,9 +114,12 @@ impl LevelDB {
 }
 
 impl ConnAgent {
-    pub async fn set(&self, key: String, value: String) -> anyhow::Result<Option<()>> {
+    pub async fn set(&self, key: &str, value: Vec<u8>) -> anyhow::Result<Option<()>> {
+        if key.len() > 10 && key.len() < 25 {
+            return Ok(None);
+        }
         self.0
-            .set(key.to_string(), value.to_string())
+            .set(key.to_string(), value)
             .await
             .map_or(Ok(()), |v| v.map_err(anyhow::Error::from))?;
         Ok(Some(()))
@@ -128,7 +131,7 @@ impl ConnAgent {
         Ok(())
     }
 
-    pub async fn get(&self, key: String) -> Option<Vec<u8>> {
+    pub async fn get(&self, key: &str) -> Option<Vec<u8>> {
         self.0.get(key.to_string()).await.flatten()
     }
 }
@@ -140,14 +143,11 @@ mod test {
 
     async fn async_test_leveldb(agent: ConnAgent) -> anyhow::Result<()> {
         let conn = agent.clone();
-        conn.set("key".to_string(), "value".to_string()).await?;
-        assert_eq!(
-            conn.get("key".to_string()).await,
-            Some("value".as_bytes().to_vec())
-        );
-        conn.set("key".to_string(), "value".to_string()).await?;
+        conn.set("key", "value".as_bytes().to_vec()).await?;
+        assert_eq!(conn.get("key").await, Some("value".as_bytes().to_vec()));
+        conn.set("key", "value".as_bytes().to_vec()).await?;
         conn.delete("key".to_string()).await?;
-        assert_eq!(conn.get("key".to_string()).await, None);
+        assert_eq!(conn.get("key").await, None);
 
         Ok(())
     }

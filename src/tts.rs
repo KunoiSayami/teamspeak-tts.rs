@@ -66,6 +66,7 @@ impl Requester {
         Self {
             inner: reqwest::ClientBuilder::new()
                 .http1_title_case_headers()
+                .timeout(Duration::from_secs(5))
                 .build()
                 .unwrap(),
             tts,

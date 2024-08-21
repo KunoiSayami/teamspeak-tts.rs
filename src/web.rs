@@ -52,15 +52,22 @@ pub async fn route(
 async fn handler(
     Extension(sender): Extension<Arc<broadcast::Sender<MainEvent>>>,
     Extension(requester): Extension<Arc<Requester>>,
-    Extension(leveldb_helper): Extension<ConnAgent>,
+    Extension(leveldb_helper): Extension<Arc<ConnAgent>>,
     Json(data): Json<Data>,
 ) -> Result<(), String> {
-    let data = match leveldb_helper.get(data.content.clone()).await {
+    let data = match leveldb_helper.get(&data.content).await {
         Some(data) => data,
-        None => requester
-            .request(&data.content)
-            .await
-            .map_err(|e| e.to_string())?,
+        None => {
+            let ret = requester
+                .request(&data.content)
+                .await
+                .map_err(|e| e.to_string())?;
+            leveldb_helper
+                .set(&data.content, ret.clone())
+                .await
+                .map_err(|e| e.to_string())?;
+            ret
+        }
     };
 
     //log::debug!("Data length: {}", data.len());

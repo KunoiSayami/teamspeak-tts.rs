@@ -15,18 +15,23 @@ mod web;
 fn init_log(verbose: u8) {
     let mut logger = env_logger::Builder::from_default_env();
     if verbose < 1 {
-        logger.filter_module("trust_dns_proto", log::LevelFilter::Warn);
-    }
-    if verbose < 2 {
+        logger.filter_module("symphonia_format_ogg", log::LevelFilter::Warn);
+    } else if verbose < 2 {
+        logger
+            .filter_module("hickory_proto", log::LevelFilter::Warn)
+            .filter_module("hickory_resolver", log::LevelFilter::Warn)
+            .filter_module("trust_dns_proto", log::LevelFilter::Warn);
+    } else if verbose < 3 {
         logger
             .filter_module("tsproto::license", log::LevelFilter::Warn)
+            .filter_module("tsproto::client", log::LevelFilter::Warn)
             .filter_module("reqwest::connect", log::LevelFilter::Warn)
             .filter_module("axum::serve", log::LevelFilter::Warn)
             .filter_module("hyper_util::client", log::LevelFilter::Warn);
-    }
-    if verbose < 3 {
+    } else if verbose < 4 {
         logger
             .filter_module("tracing::span", log::LevelFilter::Warn)
+            .filter_module("h2", log::LevelFilter::Warn)
             .filter_module("tsproto::resend", log::LevelFilter::Warn);
     }
     logger.init();
@@ -65,7 +70,6 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
         .version(tsclientlib::Version::Linux_3_5_6)
         .name(config.teamspeak().nickname().to_string());
 
-    // Optionally set the key of this client, otherwise a new key is generated.
     let id = Identity::new_from_str(config.teamspeak().identity()).unwrap();
     let con_config = con_config.identity(id);
 
@@ -93,7 +97,6 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
     loop {
         let events = con.events().try_for_each(|_| async { Ok(()) });
 
-        // Wait for ctrl + c
         tokio::select! {
             send_audio = recv.recv() => {
                 if let Some(packet) = send_audio {
@@ -106,14 +109,6 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
             _ = tokio::signal::ctrl_c() => {
                 break;
             }
-            /* ret = async {
-                while let Some(event) = con.events().next().await {
-                    event?;
-                }
-                Ok::<(), tsclientlib::Error>(())
-            } => {
-                ret?;
-            } */
             ret = events => {
                 ret?;
             }
