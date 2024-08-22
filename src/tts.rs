@@ -13,7 +13,7 @@ use symphonia::core::{
     formats::FormatReader,
     io::{MediaSource, MediaSourceStream},
 };
-use tap::TapFallible;
+use tap::{Tap, TapFallible};
 use tokio::{sync::mpsc, task::LocalSet};
 use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
 
@@ -156,7 +156,12 @@ async fn delay_send(
     leveldb_helper
         .set(&original_statement, source.data.read().unwrap().to_vec())
         .await
-        .tap_err(|e| log::error!("Unable write cache: {e:?}"))?;
+        .tap_err(|e| log::error!("Unable write cache: {e:?}"))?
+        .tap(|s| {
+            if s.is_some() {
+                log::trace!("Write {original_statement} to cache");
+            }
+        });
     Ok(())
 }
 
@@ -234,10 +239,22 @@ pub struct Requester {
 
 impl Requester {
     pub fn new(tts: TTS) -> Self {
+        let mut header = HeaderMap::new();
+        header.insert(CONTENT_TYPE, "application/ssml+xml".parse().unwrap());
+        header.insert(
+            "X-Microsoft-OutputFormat",
+            "ogg-48khz-16bit-mono-opus".parse().unwrap(),
+        );
+        header.insert(
+            USER_AGENT,
+            format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"),)
+                .parse()
+                .unwrap(),
+        );
         Self {
             inner: reqwest::ClientBuilder::new()
-                .http1_title_case_headers()
                 .timeout(Duration::from_secs(5))
+                .default_headers(header)
                 .build()
                 .unwrap(),
             tts,
@@ -246,18 +263,11 @@ impl Requester {
 
     fn build_headers(&self, length: usize) -> HeaderMap {
         let mut header = HeaderMap::new();
+        header.insert(CONTENT_LENGTH, length.to_string().parse().unwrap());
         header.insert(
             "Ocp-Apim-Subscription-Key",
             self.tts.ocp_apim_subscription_key().parse().unwrap(),
         );
-        header.insert(CONTENT_TYPE, "application/ssml+xml".parse().unwrap());
-        header.insert(
-            "X-Microsoft-OutputFormat",
-            "ogg-48khz-16bit-mono-opus".parse().unwrap(),
-        );
-        header.insert(CONTENT_LENGTH, length.to_string().parse().unwrap());
-        header.insert(USER_AGENT, "tts/0.1.0".parse().unwrap());
-
         header
     }
 

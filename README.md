@@ -40,7 +40,8 @@ listen = "127.0.0.1"
 port = 11400
 ```
 
-## License
+
+## Open Source License
 
 [![](https://www.gnu.org/graphics/agplv3-155x51.png)](https://www.gnu.org/licenses/agpl-3.0.txt)
 
@@ -52,8 +53,6 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 
 You should have received a copy of the GNU Affero General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-
-## Open Source License
 
 ### tsclientlib
 The MIT License (MIT)

@@ -115,7 +115,8 @@ impl LevelDB {
 
 impl ConnAgent {
     pub async fn set(&self, key: &str, value: Vec<u8>) -> anyhow::Result<Option<()>> {
-        if key.len() > 10 && key.len() < 25 {
+        if key.len() > 25 && key.len() < 50 {
+            log::trace!("Skip {} {key}", key.len());
             return Ok(None);
         }
         self.0

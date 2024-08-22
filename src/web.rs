@@ -58,26 +58,30 @@ async fn handler(
     Extension(requester): Extension<Arc<Requester>>,
     Extension(leveldb_helper): Extension<Arc<ConnAgent>>,
     Json(data): Json<Data>,
-) -> Result<(), String> {
-    match leveldb_helper.get(&data.content).await {
-        Some(data) => {
-            if !data.is_empty() {
-                sender.send(TTSEvent::Data(data)).await.ok();
-            }
+) -> Result<String, String> {
+    let code = match leveldb_helper.get(&data.content).await {
+        Some(data) => if !data.is_empty() {
+            sender.send(TTSEvent::Data(data)).await.ok();
+            "Hit cache"
+        } else {
+            "Cache is empty"
         }
+        .to_string(),
         None => {
             let ret = requester
                 .request(&data.content)
                 .await
                 .map_err(|e| e.to_string())?;
+            let code = ret.status();
             sender
                 .send(TTSEvent::NewData(data.content, ret))
                 .await
                 .tap_err(|_| log::error!("Failure send response"))
                 .ok();
+            code.to_string()
         }
     };
 
     //log::debug!("Data length: {}", data.len());
-    Ok(())
+    Ok(code)
 }

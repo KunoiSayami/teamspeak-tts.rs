@@ -7,15 +7,20 @@
 <script>
 
    function submit() {
+      let headMessage = document.getElementById("head-message");
+      let status = document.getElementById("status");
       let value = document.getElementById("text").value;
       let r = new XMLHttpRequest();
       r.open("POST", "/", true);
       r.setRequestHeader("Content-Type", "application/json");
       r.onreadystatechange = () => {
          if (r.readyState != 4 || r.status != 200) {
-            document.getElementById("head-message").style.display = "inline";
+            headMessage.style.display = "inline";
+            status.innerText = r.responseText;
+            status.style.display = "inline";
             setTimeout(() => {
-               document.getElementById("head-message").style.display = "none";
+               headMessage.style.display = "none";
+               status.style.display = "none";
             }, 3000);
             return;
          }
@@ -47,7 +52,7 @@
 </script>
 
 <body>
-   <span id="head-message" style="display: none;">Send success</span>
+   <span id="head-message" style="display: none;">Send success</span>&nbsp;<span id="status"></span>
    <br>
    <textarea id="text" rows="5" cols="60" name="content"></textarea>
    <br>
