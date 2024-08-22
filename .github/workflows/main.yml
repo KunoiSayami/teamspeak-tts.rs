@@ -1,0 +1,100 @@
+name: Build Releases
+
+on:
+  push:
+
+  workflow_dispatch:
+    branches:
+      - master
+
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        job:
+          - os: macos-latest
+            binary_name: teamspeak-tts_darwin_amd64
+          - os: ubuntu-latest
+            binary_name: teamspeak-tts_linux_amd64
+          - os: windows-latest
+            binary_name: teamspeak-tts_windows_amd64.exe
+
+    name: Build
+    runs-on: ${{ matrix.job.os }}
+    env:
+      RUST_BACKTRACE: full
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Environment
+        run: |
+          git submodule update --init --recursive
+
+      - name: Update rust
+        run: rustup update
+
+      - name: Build binary
+        run: |
+          cargo build --profile release --features full
+
+      - name: Rename binary
+        id: rename
+        shell: bash
+        env:
+          BINARY_NAME: ${{ matrix.job.binary_name }}
+        run: |
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            mv target/release/teamspeak-tts.exe target/release/$BINARY_NAME
+          else
+            mv target/release/teamspeak-tts target/release/$BINARY_NAME
+          fi
+          echo "bin=target/release/$BINARY_NAME" >> $GITHUB_OUTPUT
+      - uses: actions/upload-artifact@v4.3.3
+        with:
+          name: ${{ matrix.job.binary_name }}
+          path: target/release/${{ matrix.job.binary_name }}
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ steps.rename.outputs.bin }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build_aarch64:
+    name: Cross build
+    runs-on: ubuntu-latest
+    env:
+      RUST_BACKTRACE: full
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Environment
+        run: |
+          git submodule update --init --recursive
+          sudo apt install libssl-dev
+      - name: Update rust
+        run: rustup target install aarch64-unknown-linux-musl
+      - name: Install cross
+        run: cargo install cross
+      - name: Build binary
+        run: |
+          cross build --target aarch64-unknown-linux-musl --profile release --features full
+      - run: mv target/aarch64-unknown-linux-musl/release/teamspeak-tts target/aarch64-unknown-linux-musl/release/teamspeak-tts_linux_aarch64
+      - uses: actions/upload-artifact@v4.3.3
+        with:
+          name: teamspeak-tts_linux_aarch64
+          path: target/aarch64-unknown-linux-musl/release/teamspeak-tts_linux_aarch64
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: target/aarch64-unknown-linux-musl/release/teamspeak-tts_linux_aarch64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
