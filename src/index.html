@@ -34,13 +34,15 @@
    }
 
    document.addEventListener("DOMContentLoaded", function (event) {
+      let textarea = document.getElementById("text");
       let s = window.localStorage.getItem("tts");
       if (s !== null) {
-         document.getElementById("text").value = s;
+         textarea.value = s;
       }
       setTimeout(saveText, 3000);
 
-      document.getElementById('text').addEventListener('keydown', e => { if (e.ctrlKey && e.keyCode === 13) submit(); })
+      // https://stackoverflow.com/questions/1684196/
+      textarea.addEventListener('keydown', e => { if (e.ctrlKey && e.keyCode === 13) submit(); })
    });
 </script>
 

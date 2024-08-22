@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use config::Config;
 use futures::prelude::*;
 use tokio::sync::{broadcast, mpsc};
 
 use tsclientlib::{Connection, DisconnectOptions, Identity, StreamItem};
+use tts::MiddlewareTask;
 use types::MainEvent;
 use web::route;
 
@@ -67,9 +70,9 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
     config.validate()?;
 
     let con_config = Connection::build(config.teamspeak().server())
-        .log_commands(verbose >= 1)
-        .log_packets(verbose >= 2)
-        .log_udp_packets(verbose >= 3)
+        .log_commands(verbose >= 5)
+        .log_packets(verbose >= 6)
+        .log_udp_packets(verbose >= 7)
         .channel_id(tsclientlib::ChannelId(config.teamspeak().channel()))
         .version(tsclientlib::Version::Linux_3_5_6)
         .name(config.teamspeak().nickname().to_string());
@@ -79,16 +82,22 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
 
     let (teamspeak_sender, mut teamspeak_recv) = mpsc::channel(16);
     let (audio_sender, audio_receiver) = mpsc::channel(32);
+    let (middle_sender, middle_receiver) = mpsc::channel(32);
     let (global_sender, global_receiver) = broadcast::channel(16);
 
     let (cache_handler, leveldb_helper) = cache::LevelDB::connect(config.leveldb().to_string());
 
+    let middle_handler = MiddlewareTask::new(
+        middle_receiver,
+        audio_sender.clone(),
+        Arc::new(leveldb_helper.clone()),
+    );
     let handler = tokio::spawn(tts::send_audio(audio_receiver, teamspeak_sender));
 
     let web = tokio::spawn(route(
         config.clone(),
         leveldb_helper,
-        audio_sender.clone(),
+        middle_sender.clone(),
         global_receiver.resubscribe(),
     ));
 
@@ -126,15 +135,20 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
     }
 
     global_sender.send(MainEvent::Exit).ok();
-    audio_sender.send(tts::TTSEvent::Exit).await.ok();
+    middle_sender.send(tts::TTSEvent::Exit).await.ok();
+    audio_sender.send(tts::TTSFinalEvent::Exit).await.ok();
     // Disconnect
     con.disconnect(DisconnectOptions::new())?;
     con.events().for_each(|_| future::ready(())).await;
 
     tokio::select! {
         ret = async {
+            middle_handler.join()?;
+            log::debug!("Exit middleware");
             handler.await??;
+            log::debug!("Exit audio handler");
             web.await??;
+            log::debug!("Exit web server");
             Ok::<(),anyhow::Error>(())
         } => {
             ret?;
