@@ -209,6 +209,8 @@ pub(crate) async fn send_audio(
                 let mut reader =
                     symphonia::default::formats::OggReader::try_new(source, &Default::default())?;
 
+                #[cfg(feature = "measure-time")]
+                let mut start = tokio::time::Instant::now();
                 while let Ok(packet) = reader.next_packet() {
                     sender
                         .send(OutAudio::new(&AudioData::C2S {
@@ -219,11 +221,21 @@ pub(crate) async fn send_audio(
                         .await
                         .tap_err(|_| log::error!("Send error"))
                         .ok();
+                    #[cfg(feature = "measure-time")]
+                    log::debug!(
+                        "{:?} elapsed to build audio slice",
+                        tokio::time::Instant::now() - start
+                    );
                     #[cfg(feature = "spin-sleep")]
                     tokio::task::spawn_blocking(|| spin_sleep::sleep(Duration::from_millis(20)))
                         .await?;
                     #[cfg(not(feature = "spin-sleep"))]
                     tokio::time::sleep(Duration::from_millis(20)).await;
+
+                    #[cfg(feature = "measure-time")]
+                    {
+                        start = tokio::time::Instant::now();
+                    }
                 }
             }
             TTSFinalEvent::Exit => break,

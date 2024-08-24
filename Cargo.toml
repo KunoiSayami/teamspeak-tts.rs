@@ -1,6 +1,6 @@
 [package]
 name = "teamspeak-tts"
-version = "1.1.0"
+version = "1.2.0"
 homepage = "https://github.com/KunoiSayami/teamspeak-tts.rs"
 edition = "2021"
 
@@ -19,6 +19,8 @@ rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = [
     "http2",
     "stream",
+    "hickory-dns",
+    "socks",
 ] }
 rusty-leveldb = { version = "3.0.0" }
 serde = { version = "1", features = ["derive"] }
@@ -33,7 +35,8 @@ tsproto = { git = "https://github.com/ReSpeak/tsclientlib" }
 tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib" }
 
 [features]
-default = ["reqwest/rustls-tls"]
+default = ["full"]
+rustls = ["reqwest/rustls-tls"]
 spin-sleep = ["spin_sleep"]
-full = ["spin-sleep"]
+full = ["spin-sleep", "rustls"]
 measure-time = []

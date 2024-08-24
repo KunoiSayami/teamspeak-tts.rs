@@ -113,6 +113,8 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
         r?;
     }
 
+    #[cfg(feature = "measure-time")]
+    let mut start = tokio::time::Instant::now();
     loop {
         let events = con.events().try_for_each(|_| async { Ok(()) });
 
@@ -123,6 +125,12 @@ async fn async_main(path: &String, verbose: u8) -> Result<()> {
                 } else {
                     log::info!("Audio sending stream was canceled");
                     break;
+                }
+                #[cfg(feature = "measure-time")]
+                {
+                    let current = tokio::time::Instant::now();
+                    log::trace!("{:?} elapsed to send audio", current - start);
+                    start = current;
                 }
             }
             _ = tokio::signal::ctrl_c() => {
