@@ -42,7 +42,9 @@ pub async fn route(
         .layer(Extension(Arc::new(client)))
         .layer(Extension(Arc::new(leveldb_helper)));
 
-    let listener = tokio::net::TcpListener::bind(config.web().bind()).await?;
+    let listener = tokio::net::TcpListener::bind(config.web().bind())
+        .await
+        .tap_err(|e| log::error!("Web server bind error: {e:?}"))?;
 
     axum::serve(listener, router)
         .with_graceful_shutdown(async move {

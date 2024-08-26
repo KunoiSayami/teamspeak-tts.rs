@@ -73,6 +73,7 @@ fn main() -> Result<()> {
 }
 
 fn find_self_and_target(
+    current_channel: Option<ChannelId>,
     state: &tsclientlib::data::Connection,
     target_id: Option<ClientId>,
     interest: Option<ClientDbId>,
@@ -98,10 +99,8 @@ fn find_self_and_target(
     let current_user = state.own_client;
 
     // Get current channel, if none, throw it
-    let current_channel = state
-        .clients
-        .get(&current_user)
-        .map(|x| x.channel)
+    let current_channel = current_channel
+        .or_else(|| state.clients.get(&current_user).map(|x| x.channel))
         .tap_none(|| log::error!("Unable fetch current channel id"))?;
 
     // If found client in channel
@@ -188,6 +187,7 @@ async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()>
 
     let tail_target = config.teamspeak().follow().clone();
     let mut tail_target_client = None;
+    let mut current_channel = None;
 
     #[cfg(feature = "measure-time")]
     let mut start = tokio::time::Instant::now();
@@ -198,12 +198,16 @@ async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()>
 
     loop {
         if refresh && tail_target.is_some() {
-            if let Some((client_id, channel_id, command)) =
-                find_self_and_target(conn.get_state().unwrap(), tail_target_client, tail_target)
-            {
+            if let Some((client_id, channel_id, command)) = find_self_and_target(
+                current_channel,
+                conn.get_state().unwrap(),
+                tail_target_client,
+                tail_target,
+            ) {
                 if !tail_target_client.replace(client_id).eq(&Some(client_id)) {
                     log::info!("Following client {client_id}");
                 }
+                current_channel.replace(channel_id);
                 command.send(&mut conn).unwrap();
                 log::debug!("Switching to channel: {channel_id}");
             }
