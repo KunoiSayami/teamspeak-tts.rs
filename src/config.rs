@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use serde::Deserialize;
 use tokio::fs::read_to_string;
+use tsclientlib::ClientDbId;
 
 fn default_nickname() -> String {
     "tts".to_string()
@@ -81,6 +82,7 @@ pub struct TeamSpeak {
     nickname: String,
     #[serde(default)]
     channel: u64,
+    follow: Option<u64>,
 }
 
 impl TeamSpeak {
@@ -98,6 +100,10 @@ impl TeamSpeak {
 
     pub fn channel(&self) -> u64 {
         self.channel
+    }
+
+    pub fn follow(&self) -> Option<ClientDbId> {
+        self.follow.map(|s| ClientDbId(s))
     }
 }
 

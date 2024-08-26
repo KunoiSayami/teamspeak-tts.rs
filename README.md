@@ -19,6 +19,9 @@ server = ""
 # Default channel ID
 channel = 0
 
+# Follow user by client database ID, if multiple client found, random choose one
+#follow = 0
+
 [tts]
 # Azure TTS endpoint, you should parse your zone url in this field
 endpoint = ""
