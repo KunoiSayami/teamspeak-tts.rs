@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+   <title>TTS</title>
+</head>
+<script src="/mstts.js?time=20240817"></script>
+<script>
+   'use strict';
+
+   function submit() {
+      let headMessage = document.getElementById("head-message");
+      let status = document.getElementById("status");
+      let value = document.getElementById("text").value;
+      let sex = document.getElementById("sex").value;
+      let code = document.getElementById("code").value;
+      let variant = document.getElementById("variant").value;
+      let r = new XMLHttpRequest();
+      r.open("POST", "/", true);
+      r.setRequestHeader("Content-Type", "application/json");
+      r.onreadystatechange = () => {
+         if (r.readyState != 4 || r.status != 200) {
+            headMessage.style.display = "inline";
+            status.innerText = r.responseText;
+            status.style.display = "inline";
+            setTimeout(() => {
+               headMessage.style.display = "none";
+               status.style.display = "none";
+            }, 3000);
+            return;
+         }
+      };
+      r.send(JSON.stringify({ content: value, sex: sex, code: code, variant: variant }));
+   }
+
+   function clearText() {
+      document.getElementById("text").value = "";
+   }
+
+   function saveText() {
+      let value = document.getElementById("text").value;
+      window.localStorage.setItem("tts", value);
+      setTimeout(saveText, 3000);
+   }
+
+   function buildOption(element) {
+      let ret = document.createElement("option");
+      ret.key = element;
+      ret.innerHTML = element;
+      return ret;
+   }
+
+   function saveVariant() {
+      let sex = document.getElementById("sex");
+      let code = document.getElementById("code");
+      let variant = document.getElementById("variant");
+
+      window.localStorage.setItem("tts-variant", JSON.stringify({
+         sex: sex.value, code: code.value, variant: variant.value
+      }));
+   }
+
+   function getVariant() {
+      let x = window.localStorage.getItem("tts-variant");
+      //console.log(x);
+      if (x != null) {
+         return JSON.parse(x);
+      }
+      return { sex: "", code: "", variant: "" };
+   }
+
+   function initOptions() {
+      let sex = document.getElementById("sex");
+      let code = document.getElementById("code");
+      let variant = document.getElementById("variant");
+      for (let [item, _] of Object.entries(MSTTS)) {
+         sex.appendChild(buildOption(item));
+      }
+      const updateVariant = () => {
+         variant.innerHTML = '';
+         for (let item of MSTTS[sex.value][code.value]) {
+            variant.appendChild(buildOption(item));
+         }
+      };
+      const updateCode = () => {
+         code.innerHTML = '';
+         for (let [item, _] of Object.entries(MSTTS[sex.value])) {
+            code.appendChild(buildOption(item));
+         }
+         updateVariant();
+      }
+      let store = getVariant();
+      sex.value = store.sex;
+      updateCode();
+      code.value = store.code;
+      updateVariant();
+      variant.value = store.variant;
+
+      sex.addEventListener('change', () => {
+         updateCode();
+         saveVariant();
+      });
+      code.addEventListener('change', () => {
+         updateVariant();
+         saveVariant();
+      });
+      variant.addEventListener('change', saveVariant);
+   }
+
+   document.addEventListener("DOMContentLoaded", function (event) {
+      let textarea = document.getElementById("text");
+      let s = window.localStorage.getItem("tts");
+      if (s !== null) {
+         textarea.value = s;
+      }
+      setTimeout(saveText, 3000);
+
+      // https://stackoverflow.com/questions/1684196/
+      textarea.addEventListener('keydown', e => { if (e.ctrlKey && e.keyCode === 13) submit(); })
+
+      initOptions();
+   });
+</script>
+
+<body>
+   <span id="head-message" style="display: none;">Send success</span>&nbsp;<span id="status"></span>
+   <br>
+   <select id="sex"></select><select id="code"></select><select id="variant"></select>
+   <br>
+   <textarea id="text" rows="5" cols="60" name="content"></textarea>
+   <br>
+   <button onclick="submit()">submit</button>
+   <button onclick="clearText()">clear</button>
+
+</body>
+
+</html>

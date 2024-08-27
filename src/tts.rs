@@ -63,7 +63,7 @@ impl MiddlewareTask {
 }
 
 pub(crate) enum TTSEvent {
-    NewData(String, reqwest::Response),
+    NewData((u64, usize), reqwest::Response),
     Data(Vec<u8>),
     Exit,
 }
@@ -136,7 +136,7 @@ async fn download(
 }
 
 async fn delay_send(
-    original_statement: String,
+    (original_hash, length): (u64, usize),
     response: Response,
     sender: Arc<mpsc::Sender<TTSFinalEvent>>,
     leveldb_helper: Arc<ConnAgent>,
@@ -153,13 +153,18 @@ async fn delay_send(
         .await
         .ok();
     handler.await??;
+
+    if length > 30 && length < 75 {
+        log::trace!("Skip {original_hash} length: {length}");
+        return Ok(());
+    }
     leveldb_helper
-        .set(&original_statement, source.data.read().unwrap().to_vec())
+        .set(original_hash, source.data.read().unwrap().to_vec())
         .await
         .tap_err(|e| log::error!("Unable write cache: {e:?}"))?
         .tap(|s| {
             if s.is_some() {
-                log::trace!("Write {original_statement} to cache");
+                log::trace!("Write {original_hash} to cache");
             }
         });
     Ok(())
@@ -283,8 +288,21 @@ impl Requester {
         header
     }
 
-    pub async fn request(&self, text: &str) -> reqwest::Result<Response> {
-        let ssml = self.tts.build_ssml(text);
+    fn build_ssml(lang: &str, gender: &str, name: String, text: &str) -> String {
+        format!(
+            "<speak version='1.0' xml:lang='en-US'><voice xml:lang='{lang}' xml:gender='{gender}' name='{name}'>{}</voice></speak>",
+            text.trim()
+        )
+    }
+
+    pub async fn request(
+        &self,
+        lang: &str,
+        gender: &str,
+        name: String,
+        text: &str,
+    ) -> reqwest::Result<Response> {
+        let ssml = Self::build_ssml(lang, gender, name, text);
         log::trace!("Request ssml: {ssml:?}");
         let ret = self
             .inner
@@ -293,13 +311,7 @@ impl Requester {
             .headers(self.build_headers(ssml.len()))
             .send()
             .await?;
-        log::debug!("Api response: {}", ret.status());
-
-        /* let mut v = Vec::new();
-
-        while let Ok(Some(chunk)) = ret.chunk().await {
-            v.push(chunk);
-        } */
+        log::trace!("Api response: {}", ret.status());
 
         Ok(ret)
     }

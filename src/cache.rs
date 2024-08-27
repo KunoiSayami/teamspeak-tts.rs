@@ -6,6 +6,8 @@ pub use rusty_leveldb::Result;
 #[derive(Clone, Debug)]
 pub struct ConnAgent(DatabaseHelper);
 
+type KeyType = u64;
+
 impl From<DatabaseHelper> for ConnAgent {
     fn from(value: DatabaseHelper) -> Self {
         Self(value)
@@ -21,13 +23,13 @@ kstool_helper_generator::oneshot_helper! {
 
     pub enum DatabaseEvent {
         #[ret(Result<()>)]
-        Set(String, Vec<u8>),
+        Set(KeyType, Vec<u8>),
         #[ret(Option<Vec<u8>>)]
         Get(
-            String,
+            KeyType,
         ),
         #[ret(Result<()>)]
-        Delete(String),
+        Delete(KeyType),
         Exit,
     }
 }
@@ -68,15 +70,15 @@ impl LevelDB {
         while let Some(event) = recv.blocking_recv() {
             match event {
                 DatabaseEvent::Set(k, v, sender) => {
-                    let ret = db.put(k.as_bytes(), &v);
+                    let ret = db.put(&k.to_be_bytes(), &v);
                     sender.send(ret).ok();
                     db.flush()?;
                 }
                 DatabaseEvent::Get(k, sender) => {
-                    sender.send(db.get(k.as_bytes())).ok();
+                    sender.send(db.get(&k.to_be_bytes())).ok();
                 }
                 DatabaseEvent::Delete(k, sender) => {
-                    sender.send(db.delete(k.as_bytes())).ok();
+                    sender.send(db.delete(&k.to_be_bytes())).ok();
                     db.flush()?;
                 }
                 DatabaseEvent::Exit => break,
@@ -114,26 +116,22 @@ impl LevelDB {
 }
 
 impl ConnAgent {
-    pub async fn set(&self, key: &str, value: Vec<u8>) -> anyhow::Result<Option<()>> {
-        if key.len() > 25 && key.len() < 50 {
-            log::trace!("Skip {} {key}", key.len());
-            return Ok(None);
-        }
+    pub async fn set(&self, key: KeyType, value: Vec<u8>) -> anyhow::Result<Option<()>> {
         self.0
-            .set(key.to_string(), value)
+            .set(key, value)
             .await
             .map_or(Ok(()), |v| v.map_err(anyhow::Error::from))?;
         Ok(Some(()))
     }
 
     #[cfg(test)]
-    pub async fn delete(&self, key: String) -> anyhow::Result<()> {
-        self.0.delete(key.to_string()).await;
+    pub async fn delete(&self, key: KeyType) -> anyhow::Result<()> {
+        self.0.delete(key).await;
         Ok(())
     }
 
-    pub async fn get(&self, key: &str) -> Option<Vec<u8>> {
-        self.0.get(key.to_string()).await.flatten()
+    pub async fn get(&self, key: KeyType) -> Option<Vec<u8>> {
+        self.0.get(key).await.flatten()
     }
 }
 
@@ -144,11 +142,11 @@ mod test {
 
     async fn async_test_leveldb(agent: ConnAgent) -> anyhow::Result<()> {
         let conn = agent.clone();
-        conn.set("key", "value".as_bytes().to_vec()).await?;
-        assert_eq!(conn.get("key").await, Some("value".as_bytes().to_vec()));
-        conn.set("key", "value".as_bytes().to_vec()).await?;
-        conn.delete("key".to_string()).await?;
-        assert_eq!(conn.get("key").await, None);
+        conn.set(114514, "value".as_bytes().to_vec()).await?;
+        assert_eq!(conn.get(114514).await, Some("value".as_bytes().to_vec()));
+        conn.set(114514, "value".as_bytes().to_vec()).await?;
+        conn.delete(114514).await?;
+        assert_eq!(conn.get(114514).await, None);
 
         Ok(())
     }

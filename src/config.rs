@@ -112,9 +112,6 @@ pub struct TTS {
     endpoint: String,
     #[serde(alias = "Ocp-Apim-Subscription-Key")]
     ocp_apim_subscription_key: ArrayOrSingle<String>,
-    lang: String,
-    gender: String,
-    name: String,
 }
 
 impl TTS {
@@ -124,16 +121,6 @@ impl TTS {
 
     pub fn ocp_apim_subscription_key(&self) -> &str {
         self.ocp_apim_subscription_key.get_one()
-    }
-
-    pub fn build_ssml(&self, text: &str) -> String {
-        format!(
-            "<speak version='1.0' xml:lang='en-US'><voice xml:lang='{}' xml:gender='{}' name='{}'>{}</voice></speak>",
-            self.lang,
-            self.gender,
-            self.name,
-            text.trim()
-        )
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {
