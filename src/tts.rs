@@ -143,7 +143,7 @@ impl std::io::Read for MutableMediaSource {
         let data = self.data.read().unwrap();
         let size = buf.write(&data[self.offset.load(std::sync::atomic::Ordering::Acquire)..])?;
         self.offset
-            .fetch_add(size, std::sync::atomic::Ordering::Acquire);
+            .fetch_add(size, std::sync::atomic::Ordering::Release);
         Ok(size)
     }
 }
@@ -247,8 +247,16 @@ pub(crate) async fn send_audio(
             TTSFinalEvent::NewData(raw) => {
                 let source = MediaSourceStream::new(raw, Default::default());
 
-                let mut reader =
-                    symphonia::default::formats::OggReader::try_new(source, &Default::default())?;
+                let mut reader = match symphonia::default::formats::OggReader::try_new(
+                    source,
+                    &Default::default(),
+                ) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        log::error!("Read stream error: {e:?}");
+                        continue;
+                    }
+                };
 
                 sender.send(TeamSpeakEvent::Muted(false)).await.ok();
                 #[cfg(feature = "measure-time")]
