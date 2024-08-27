@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use std::{process::exit, sync::Arc};
 
 use anyhow::Result;
 use config::Config;
 use futures::prelude::*;
-use tokio::sync::{broadcast, mpsc, Notify};
+use tokio::sync::{broadcast, mpsc, oneshot, Notify};
 
 use tap::TapOptional;
 use tsclientlib::{
@@ -131,6 +131,23 @@ fn find_self_and_target(
     None
 }
 
+fn check_is_kick_event(client_id: ClientId, events: &[tsclientlib::events::Event]) -> bool {
+    for event in events {
+        if let tsclientlib::events::Event::PropertyRemoved {
+            id,
+            old: _,
+            invoker: _,
+            extra: _,
+        } = event
+        {
+            if let tsclientlib::events::PropertyId::Client(id) = id {
+                return id == &client_id;
+            }
+        }
+    }
+    false
+}
+
 async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()> {
     let config = Config::load(path).await?;
 
@@ -189,15 +206,20 @@ async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()>
     let tail_target = config.teamspeak().follow().clone();
     let mut tail_target_client = None;
     let mut current_channel = None;
+    let client_id = conn.get_state().unwrap().own_client;
 
     #[cfg(feature = "measure-time")]
     let mut start = tokio::time::Instant::now();
 
     let notifier = Arc::new(Notify::new());
+    let (exit_notifier, mut exit_receiver) = mpsc::channel(1);
 
     let mut refresh = true;
 
     loop {
+        if exit_receiver.try_recv().is_ok() {
+            break;
+        }
         if refresh && tail_target.is_some() {
             if let Some((client_id, channel_id, command)) = find_self_and_target(
                 current_channel,
@@ -217,10 +239,16 @@ async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()>
         let notify_waiter = notifier.clone();
         let events = conn.events().try_for_each(|event| {
             let notify = notifier.clone();
+            let exit_notifier = exit_notifier.clone();
             async move {
-                //log::debug!("{event:?}");
                 match event {
-                    StreamItem::BookEvents(_) | StreamItem::MessageEvent(_) => {
+                    StreamItem::BookEvents(event) => {
+                        if check_is_kick_event(client_id, &event) {
+                            exit_notifier.send(()).await.ok();
+                        }
+                        notify.notify_waiters();
+                    }
+                    StreamItem::MessageEvent(_) => {
                         notify.notify_waiters();
                     }
                     _ => {}
@@ -230,6 +258,7 @@ async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()>
         });
 
         tokio::select! {
+            biased;
             send_audio = teamspeak_recv.recv() => {
                 if let Some(packet) = send_audio {
                     match packet {
