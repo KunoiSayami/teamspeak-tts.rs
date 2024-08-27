@@ -15,6 +15,7 @@ use symphonia::core::{
 };
 use tap::{Tap, TapFallible};
 use tokio::{sync::mpsc, task::LocalSet};
+use tsclientlib::prelude::OutMessageTrait;
 use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
 
 use crate::{cache::ConnAgent, config::TTS};
@@ -59,6 +60,41 @@ impl MiddlewareTask {
 
     pub fn join(self) -> anyhow::Result<()> {
         self.handle.join().unwrap()
+    }
+}
+
+pub(crate) enum TeamSpeakEvent {
+    Muted(bool),
+    Data(OutPacket),
+}
+
+impl TeamSpeakEvent {
+    fn build_sound_status<'a>(muted: bool) -> tsclientlib::messages::c2s::OutClientUpdatePart<'a> {
+        tsclientlib::messages::c2s::OutClientUpdatePart {
+            name: None,
+            input_muted: None,
+            output_muted: Some(muted),
+            is_away: None,
+            away_message: None,
+            input_hardware_enabled: None,
+            output_hardware_enabled: Some(!muted),
+            is_channel_commander: None,
+            avatar_hash: None,
+            phonetic_name: None,
+            talk_power_request: None,
+            talk_power_request_message: None,
+            is_recording: None,
+            badges: None,
+        }
+    }
+}
+
+impl OutMessageTrait for TeamSpeakEvent {
+    fn to_packet(self) -> tsproto_packets::packets::OutCommand {
+        tsclientlib::messages::c2s::OutClientUpdateMessage::new(&mut std::iter::once(match self {
+            TeamSpeakEvent::Muted(muted) => Self::build_sound_status(muted),
+            TeamSpeakEvent::Data(_) => unreachable!("This is not command packet, please"),
+        }))
     }
 }
 
@@ -204,7 +240,7 @@ pub(crate) async fn audio_middleware(
 
 pub(crate) async fn send_audio(
     mut receiver: mpsc::Receiver<TTSFinalEvent>,
-    sender: mpsc::Sender<OutPacket>,
+    sender: mpsc::Sender<TeamSpeakEvent>,
 ) -> anyhow::Result<()> {
     while let Some(event) = receiver.recv().await {
         match event {
@@ -214,15 +250,16 @@ pub(crate) async fn send_audio(
                 let mut reader =
                     symphonia::default::formats::OggReader::try_new(source, &Default::default())?;
 
+                sender.send(TeamSpeakEvent::Muted(false)).await.ok();
                 #[cfg(feature = "measure-time")]
                 let mut start = tokio::time::Instant::now();
                 while let Ok(packet) = reader.next_packet() {
                     sender
-                        .send(OutAudio::new(&AudioData::C2S {
+                        .send(TeamSpeakEvent::Data(OutAudio::new(&AudioData::C2S {
                             id: 0,
                             codec: tsproto_packets::packets::CodecType::OpusVoice,
                             data: &packet.data,
-                        }))
+                        })))
                         .await
                         .tap_err(|_| log::error!("Send error"))
                         .ok();
@@ -242,6 +279,7 @@ pub(crate) async fn send_audio(
                         start = tokio::time::Instant::now();
                     }
                 }
+                sender.send(TeamSpeakEvent::Muted(true)).await.ok();
             }
             TTSFinalEvent::Exit => break,
         }

@@ -7,8 +7,8 @@ use tokio::sync::{broadcast, mpsc, Notify};
 
 use tap::TapOptional;
 use tsclientlib::{
-    ChannelId, ClientDbId, ClientId, Connection, DisconnectOptions, Identity, OutCommandExt,
-    StreamItem,
+    prelude::OutMessageTrait, ChannelId, ClientDbId, ClientId, Connection, DisconnectOptions,
+    Identity, OutCommandExt, StreamItem,
 };
 
 use tsproto_packets::packets::OutCommand;
@@ -79,14 +79,13 @@ fn find_self_and_target(
     interest: Option<ClientDbId>,
 ) -> Option<(ClientId, ChannelId, OutCommand)> {
     fn make_out_message(client_id: ClientId, channel_id: ChannelId) -> OutCommand {
-        let parts = vec![tsclientlib::messages::c2s::OutClientMovePart {
-            client_id,
-            channel_id,
-            channel_password: None,
-        }];
-        let mut iter = parts.into_iter();
-
-        tsclientlib::messages::c2s::OutClientMoveMessage::new(&mut iter)
+        tsclientlib::messages::c2s::OutClientMoveMessage::new(&mut std::iter::once(
+            tsclientlib::messages::c2s::OutClientMovePart {
+                client_id,
+                channel_id,
+                channel_password: None,
+            },
+        ))
     }
 
     if interest.is_none() || state.clients.is_empty() {
@@ -143,7 +142,9 @@ async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()>
         .log_udp_packets(verbose >= 7)
         .channel_id(tsclientlib::ChannelId(config.teamspeak().channel()))
         .version(tsclientlib::Version::Linux_3_5_6)
-        .name(config.teamspeak().nickname().to_string());
+        .name(config.teamspeak().nickname().to_string())
+        .output_muted(true)
+        .output_hardware_enabled(false);
 
     let id = Identity::new_from_str(config.teamspeak().identity()).unwrap();
     let teamspeak_options = teamspeak_options.identity(id);
@@ -231,7 +232,12 @@ async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()>
         tokio::select! {
             send_audio = teamspeak_recv.recv() => {
                 if let Some(packet) = send_audio {
-                    conn.send_audio(packet)?;
+                    match packet {
+                        tts::TeamSpeakEvent::Muted(_) => {
+                            packet.to_packet().send(&mut conn)?;
+                        },
+                        tts::TeamSpeakEvent::Data(packet) => conn.send_audio(packet)?,
+                    }
                 } else {
                     log::info!("Audio sending stream was canceled");
                     break;
@@ -261,7 +267,7 @@ async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()>
     middle_sender.send(tts::TTSEvent::Exit).await.ok();
     audio_sender.send(tts::TTSFinalEvent::Exit).await.ok();
     // Disconnect
-    conn.disconnect(DisconnectOptions::new())?;
+    conn.disconnect(DisconnectOptions::new().message("API Requested."))?;
     conn.events().for_each(|_| future::ready(())).await;
 
     tokio::select! {
