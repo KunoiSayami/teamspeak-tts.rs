@@ -28,14 +28,9 @@ endpoint = ""
 
 # Azure TTS API key
 Ocp-Apim-Subscription-Key = ""
-# or load balance
+# or load balance (by random choose)
 # Ocp-Apim-Subscription-Key = ["baa", "foo"]
 
-# Rest of field definition in API document
-# https://learn.microsoft.com/en-us/azure/ai-services/speech-service/rest-text-to-speech
-lang = "en-US"
-gender = "Female"
-name = ""
 
 # Web server rated
 [web]

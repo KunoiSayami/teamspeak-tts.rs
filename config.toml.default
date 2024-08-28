@@ -1,13 +1,13 @@
+leveldb = "tts.db"
+[teamspeak]
 key = ""
 server = ""
 channel = 0
+#follow = 0
 
 [tts]
 endpoint = ""
 Ocp-Apim-Subscription-Key = ""
-lang = "en-US"
-gender = "Female"
-name = ""
 
 [web]
 listen = "127.0.0.1"
