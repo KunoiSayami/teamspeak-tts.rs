@@ -1,23 +1,17 @@
-use std::{process::exit, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Result;
 use config::Config;
-use futures::prelude::*;
-use tokio::sync::{broadcast, mpsc, oneshot, Notify};
+use connection::ConnectionHandler;
+use tokio::sync::{broadcast, mpsc};
 
-use tap::TapOptional;
-use tsclientlib::{
-    prelude::OutMessageTrait, ChannelId, ClientDbId, ClientId, Connection, DisconnectOptions,
-    Identity, OutCommandExt, StreamItem,
-};
-
-use tsproto_packets::packets::OutCommand;
 use tts::MiddlewareTask;
 use types::MainEvent;
 use web::route;
 
 pub mod cache;
 mod config;
+mod connection;
 mod tts;
 mod types;
 mod web;
@@ -72,101 +66,12 @@ fn main() -> Result<()> {
         ))
 }
 
-fn find_self_and_target(
-    current_channel: Option<ChannelId>,
-    state: &tsclientlib::data::Connection,
-    target_id: Option<ClientId>,
-    interest: Option<ClientDbId>,
-) -> Option<(ClientId, ChannelId, OutCommand)> {
-    fn make_out_message(client_id: ClientId, channel_id: ChannelId) -> OutCommand {
-        tsclientlib::messages::c2s::OutClientMoveMessage::new(&mut std::iter::once(
-            tsclientlib::messages::c2s::OutClientMovePart {
-                client_id,
-                channel_id,
-                channel_password: None,
-            },
-        ))
-    }
-
-    if interest.is_none() || state.clients.is_empty() {
-        return None;
-    }
-
-    let interest_db_id = interest.unwrap();
-
-    //let target_client = None;
-    let current_user = state.own_client;
-
-    // Get current channel, if none, throw it
-    let current_channel = current_channel
-        .or_else(|| state.clients.get(&current_user).map(|x| x.channel))
-        .tap_none(|| log::error!("Unable fetch current channel id"))?;
-
-    // If found client in channel
-    if let Some(client) = target_id.and_then(|client_id| state.clients.get(&client_id)) {
-        let channel = client.channel;
-        if channel == current_channel {
-            return None;
-        }
-        return Some((client.id, channel, make_out_message(current_user, channel)));
-    }
-    // Not found
-    for (client_id, client) in state.clients.iter() {
-        // Check database id equal
-        if client.database_id != interest_db_id {
-            continue;
-        }
-        // Check channel equal
-        if current_channel == client.channel {
-            return None;
-        }
-        return Some((
-            *client_id,
-            client.channel,
-            make_out_message(current_user, client.channel),
-        ));
-    }
-
-    // Search completed by not found
-    None
-}
-
-fn check_is_kick_event(client_id: ClientId, events: &[tsclientlib::events::Event]) -> bool {
-    for event in events {
-        if let tsclientlib::events::Event::PropertyRemoved {
-            id,
-            old: _,
-            invoker: _,
-            extra: _,
-        } = event
-        {
-            if let tsclientlib::events::PropertyId::Client(id) = id {
-                return id == &client_id;
-            }
-        }
-    }
-    false
-}
-
 async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()> {
     let config = Config::load(path).await?;
 
     config.validate()?;
 
-    let teamspeak_options = Connection::build(config.teamspeak().server())
-        .log_commands(verbose >= 5 || log_command)
-        .log_packets(verbose >= 6)
-        .log_udp_packets(verbose >= 7)
-        .channel_id(tsclientlib::ChannelId(config.teamspeak().channel()))
-        .version(tsclientlib::Version::Linux_3_5_6)
-        .name(config.teamspeak().nickname().to_string())
-        .output_muted(true)
-        .output_hardware_enabled(false);
-
-    let id = Identity::new_from_str(config.teamspeak().identity()).unwrap();
-    let teamspeak_options = teamspeak_options.identity(id);
-
-    let (teamspeak_sender, mut teamspeak_recv) = mpsc::channel(16);
+    let (teamspeak_sender, teamspeak_recv) = mpsc::channel(16);
     let (audio_sender, audio_receiver) = mpsc::channel(32);
     let (middle_sender, middle_receiver) = mpsc::channel(32);
     let (global_sender, global_receiver) = broadcast::channel(16);
@@ -178,7 +83,7 @@ async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()>
         audio_sender.clone(),
         Arc::new(leveldb_helper.clone()),
     );
-    let handler = tokio::spawn(tts::send_audio(audio_receiver, teamspeak_sender));
+    let handler = tokio::spawn(tts::send_audio(audio_receiver, teamspeak_sender.clone()));
 
     let web = tokio::spawn(route(
         config.clone(),
@@ -187,120 +92,26 @@ async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()>
         global_receiver.resubscribe(),
     ));
 
-    // Connect
-    let mut conn = teamspeak_options.connect()?;
+    let (ts_conn, early_exit_receiver) =
+        ConnectionHandler::start(config, verbose, log_command, teamspeak_recv)?;
 
-    if let Some(r) = conn
-        .events()
-        .try_filter(|e| future::ready(matches!(e, StreamItem::BookEvents(_))))
-        .next()
-        .await
-    {
-        r?;
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = early_exit_receiver => {
+            log::error!("Program exit by early receiver");
+        }
     }
 
-    tsclientlib::messages::c2s::OutChannelSubscribeAllMessage::new()
-        .send(&mut conn)
-        .unwrap();
-
-    let tail_target = config.teamspeak().follow().clone();
-    let mut tail_target_client = None;
-    let mut current_channel = None;
-    let client_id = conn.get_state().unwrap().own_client;
-
-    #[cfg(feature = "measure-time")]
-    let mut start = tokio::time::Instant::now();
-
-    let notifier = Arc::new(Notify::new());
-    let (exit_notifier, mut exit_receiver) = mpsc::channel(1);
-
-    let mut refresh = true;
-
-    loop {
-        if exit_receiver.try_recv().is_ok() {
-            break;
-        }
-        if refresh && tail_target.is_some() {
-            if let Some((client_id, channel_id, command)) = find_self_and_target(
-                current_channel,
-                conn.get_state().unwrap(),
-                tail_target_client,
-                tail_target,
-            ) {
-                if !tail_target_client.replace(client_id).eq(&Some(client_id)) {
-                    log::info!("Following client {client_id}");
-                }
-                current_channel.replace(channel_id);
-                command.send(&mut conn).unwrap();
-                log::debug!("Switching to channel: {channel_id}");
-            }
-        }
-
-        let notify_waiter = notifier.clone();
-        let events = conn.events().try_for_each(|event| {
-            let notify = notifier.clone();
-            let exit_notifier = exit_notifier.clone();
-            async move {
-                match event {
-                    StreamItem::BookEvents(event) => {
-                        if check_is_kick_event(client_id, &event) {
-                            exit_notifier.send(()).await.ok();
-                        }
-                        notify.notify_waiters();
-                    }
-                    StreamItem::MessageEvent(_) => {
-                        notify.notify_waiters();
-                    }
-                    _ => {}
-                }
-                Ok(())
-            }
-        });
-
-        tokio::select! {
-            biased;
-            send_audio = teamspeak_recv.recv() => {
-                if let Some(packet) = send_audio {
-                    match packet {
-                        tts::TeamSpeakEvent::Muted(_) => {
-                            packet.to_packet().send(&mut conn)?;
-                        },
-                        tts::TeamSpeakEvent::Data(packet) => conn.send_audio(packet)?,
-                    }
-                } else {
-                    log::info!("Audio sending stream was canceled");
-                    break;
-                }
-                #[cfg(feature = "measure-time")]
-                {
-                    let current = tokio::time::Instant::now();
-                    log::trace!("{:?} elapsed to send audio", current - start);
-                    start = current;
-                }
-            }
-            _ =  async move {
-                notify_waiter.notified().await;
-            }, if tail_target.is_some() => {
-                refresh = true;
-            }
-            _ = tokio::signal::ctrl_c() => {
-                break;
-            }
-            ret = events => {
-                ret?;
-            }
-        };
-    }
-
+    teamspeak_sender.send(tts::TeamSpeakEvent::Exit).await.ok();
     global_sender.send(MainEvent::Exit).ok();
     middle_sender.send(tts::TTSEvent::Exit).await.ok();
     audio_sender.send(tts::TTSFinalEvent::Exit).await.ok();
-    // Disconnect
-    conn.disconnect(DisconnectOptions::new().message("API Requested."))?;
-    conn.events().for_each(|_| future::ready(())).await;
 
     tokio::select! {
         ret = async {
+            ts_conn.join().await?;
+            log::debug!("Exit TeamSpeak thread");
+
             middle_handler.join()?;
             log::debug!("Exit middleware");
             handler.await??;

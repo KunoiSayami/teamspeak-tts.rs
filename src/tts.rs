@@ -66,6 +66,7 @@ impl MiddlewareTask {
 pub(crate) enum TeamSpeakEvent {
     Muted(bool),
     Data(OutPacket),
+    Exit,
 }
 
 impl TeamSpeakEvent {
@@ -93,7 +94,7 @@ impl OutMessageTrait for TeamSpeakEvent {
     fn to_packet(self) -> tsproto_packets::packets::OutCommand {
         tsclientlib::messages::c2s::OutClientUpdateMessage::new(&mut std::iter::once(match self {
             TeamSpeakEvent::Muted(muted) => Self::build_sound_status(muted),
-            TeamSpeakEvent::Data(_) => unreachable!("This is not command packet, please"),
+            _ => unreachable!("This is not command packet, please"),
         }))
     }
 }

@@ -1,12 +1,13 @@
 [package]
 name = "teamspeak-tts"
-version = "2.2.3"
+version = "2.3.0"
 homepage = "https://github.com/KunoiSayami/teamspeak-tts.rs"
 edition = "2021"
 
 [dependencies]
 anyhow = "1"
 axum = { version = "0.7", features = ["http2", "macros"] }
+base64 = "0.22"
 clap = { version = "4", features = ["derive", "cargo"] }
 env_logger = "0.11"
 futures = "0.3"
