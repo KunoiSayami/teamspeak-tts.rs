@@ -1,12 +1,12 @@
 [package]
 name = "teamspeak-tts"
-version = "2.3.0"
+version = "3.0.0-rc"
 homepage = "https://github.com/KunoiSayami/teamspeak-tts.rs"
 edition = "2021"
 
 [dependencies]
 anyhow = "1"
-axum = { version = "0.7", features = ["http2", "macros"] }
+axum = { version = "0.7", features = ["http2", "macros", "ws"] }
 base64 = "0.22"
 clap = { version = "4", features = ["derive", "cargo"] }
 env_logger = "0.11"
@@ -25,6 +25,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 rusty-leveldb = { version = "3.0.0" }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 spin_sleep = { version = "1.2.1", optional = true }
 symphonia = "0.5"
 tap = "1"

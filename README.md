@@ -2,11 +2,18 @@
 
 This bot can help you use TTS service in TeamSpeak. TTS service is powered by [Azure AI Services](https://azure.microsoft.com/en-us/products/ai-services/ai-speech/).
 
+## Features
+
+* Web UI can access anywhere
+* Cache system for frequency statement
+
 ## Configure
 
 In order to use this bot, you need an Azure subscription. Don't worry, Microsoft gives every user [0.5 million characters free per month](https://azure.microsoft.com/en-us/pricing/details/cognitive-services/speech-services/), it's enough.
 
 ```toml
+# config.toml
+
 # Level DB filename (use for cache)
 leveldb = "tts.db"
 [teamspeak]

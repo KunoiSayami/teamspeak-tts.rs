@@ -4,7 +4,7 @@
 <head>
    <title>TTS</title>
 </head>
-<script src="/mstts.js?time=20240817"></script>
+<script src="/mstts.js?time=20240825"></script>
 <script>
    'use strict';
 
@@ -31,6 +31,16 @@
          }
       };
       r.send(JSON.stringify({ content: value, sex: sex, code: code, variant: variant }));
+   }
+
+   function submitWebsocket() {
+      let headMessage = document.getElementById("head-message");
+      let status = document.getElementById("status");
+      let value = document.getElementById("text").value;
+      let sex = document.getElementById("sex").value;
+      let code = document.getElementById("code").value;
+      let variant = document.getElementById("variant").value;
+      ws.sendMessage(JSON.stringify({ content: value, sex: sex, code: code, variant: variant }));
    }
 
    function clearText() {
@@ -107,6 +117,83 @@
       variant.addEventListener('change', saveVariant);
    }
 
+   const ws = () => { };
+
+   const genContent = (content) => {
+      return new Date().toLocaleString() + " " + content + "\n";
+   }
+
+   ws.onOpen = (_evt) => {
+      console.info('[WS] Connected');
+      document.getElementById("logs").value += genContent("Websocket connected");
+      ws.prompted = false;
+   }
+
+   ws.onMessage = (evt) => {
+      console.log(evt);
+      document.getElementById("logs").value += genContent(evt.data);
+   }
+
+   ws.onError = (evt) => {
+      console.error('[WS] Error => ' + evt.data);
+      document.getElementById("logs").value += genContent("Websocket error => " + evt.data);
+      if (!ws.prompted) {
+         ws.prompted = true;
+         alert('Websocket got error, please check console to get more information');
+      }
+      try {
+         websocket.close();
+      } catch (e) {
+      }
+      websocket = null;
+   }
+
+   ws.onClose = (_evt) => {
+      console.info('[WS] Disconnected');
+      document.getElementById("logs").value += genContent("Websocket disconnected");
+      websocket = null;
+   }
+
+   let websocket = null;
+   ws.prompted = false;
+   const REMOTE_ENDPOINT = "/ws";
+
+   ws.sendMessage = (message, retries = 3) => {
+      if (websocket === null) {
+         ws.create_websocket_connect(REMOTE_ENDPOINT);
+         if (retries > 0) {
+            setTimeout(ws.sendMessage, 500, message, retries - 1);
+         }
+      }
+      websocket.send(message);
+   }
+
+   ws.create_websocket_connect = function (url) {
+      if (websocket !== null &&
+         (websocket.readyState !== WebSocket.CLOSED ||
+            websocket.readyState !== WebSocket.CLOSING)) {
+         return;
+      }
+      websocket = new WebSocket(url);
+      websocket.onopen = ws.onOpen;
+      websocket.onclose = ws.onClose;
+      websocket.onmessage = ws.onMessage;
+      websocket.onerror = ws.onError;
+   }
+
+   ws.disconnect = function () {
+      if (websocket === null) {
+         return;
+      }
+      ws.sendMessage(JSON.stringify({ content: "cLoSe ConneCtion!", code: "", sex: "", variant: "" }));
+      try {
+         websocket.close();
+      } catch (e) {
+         console.error(e);
+      }
+      websocket = null;
+   }
+
    document.addEventListener("DOMContentLoaded", function (event) {
       let textarea = document.getElementById("text");
       let s = window.localStorage.getItem("tts");
@@ -119,19 +206,28 @@
       textarea.addEventListener('keydown', e => { if (e.ctrlKey && e.keyCode === 13) submit(); })
 
       initOptions();
+      ws.create_websocket_connect(REMOTE_ENDPOINT);
+
+      window.addEventListener("beforeunload", (_e) => {
+         ws.disconnect();
+      });
    });
 </script>
 
 <body>
    <span id="head-message" style="display: none;">Send success</span>&nbsp;<span id="status"></span>
-   <br>
+   <br />
    <select id="sex"></select><select id="code"></select><select id="variant"></select>
-   <br>
+   <br />
    <textarea id="text" rows="5" cols="60" name="content"></textarea>
-   <br>
+   <br />
+   <button onclick="submitWebsocket()">submit(ws)</button>
    <button onclick="submit()">submit</button>
    <button onclick="clearText()">clear</button>
-
+   <br />
+   <br />
+   logs:<br />
+   <textarea id="logs" rows="15" cols="60" readonly></textarea>
 </body>
 
 </html>

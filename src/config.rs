@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use serde::Deserialize;
+use tap::Tap;
 use tokio::fs::read_to_string;
 use tsclientlib::ClientDbId;
 
@@ -18,12 +19,14 @@ pub enum ArrayOrSingle<T> {
     Multiple(Vec<T>),
 }
 
-impl<T> ArrayOrSingle<T> {
+impl<T: std::fmt::Debug> ArrayOrSingle<T> {
     pub fn get_one(&self) -> &T {
         match self {
             ArrayOrSingle::Single(v) => &v,
             ArrayOrSingle::Multiple(v) => {
-                rand::seq::SliceRandom::choose(&v[..], &mut rand::thread_rng()).unwrap()
+                rand::seq::SliceRandom::choose(&v[..], &mut rand::thread_rng())
+                    .unwrap()
+                    .tap(|s| log::trace!("Select code {s:?}"))
             }
         }
     }

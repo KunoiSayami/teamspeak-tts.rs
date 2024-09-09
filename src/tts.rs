@@ -18,7 +18,7 @@ use tokio::{sync::mpsc, task::LocalSet};
 use tsclientlib::prelude::OutMessageTrait;
 use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
 
-use crate::{cache::ConnAgent, config::TTS};
+use crate::{cache::ConnAgent, config::TTS, web::WebsocketHelper};
 
 pub struct MiddlewareTask {
     handle: std::thread::JoinHandle<anyhow::Result<()>>,
@@ -100,13 +100,13 @@ impl OutMessageTrait for TeamSpeakEvent {
 }
 
 pub(crate) enum TTSEvent {
-    NewData((u64, usize), reqwest::Response),
+    NewData((u64, usize), reqwest::Response, Option<WebsocketHelper>),
     Data(Vec<u8>),
     Exit,
 }
 
 pub(crate) enum TTSFinalEvent {
-    NewData(Box<dyn MediaSource>),
+    NewData(Box<dyn MediaSource>, Option<WebsocketHelper>),
     Exit,
 }
 
@@ -177,6 +177,7 @@ async fn delay_send(
     response: Response,
     sender: Arc<mpsc::Sender<TTSFinalEvent>>,
     leveldb_helper: Arc<ConnAgent>,
+    helper: Option<WebsocketHelper>,
 ) -> anyhow::Result<()> {
     let source = MutableMediaSource::new();
     let (s, receiver) = oneshot::channel();
@@ -186,7 +187,7 @@ async fn delay_send(
         .await
         .ok();
     sender
-        .send(TTSFinalEvent::NewData(Box::new(source.clone())))
+        .send(TTSFinalEvent::NewData(Box::new(source.clone()), helper))
         .await
         .ok();
     handler.await??;
@@ -216,17 +217,18 @@ pub(crate) async fn audio_middleware(
     let mut futures = Vec::new();
     while let Some(event) = receiver.recv().await {
         match event {
-            TTSEvent::NewData(original, response) => {
+            TTSEvent::NewData(original, response, helper) => {
                 futures.push(tokio::task::spawn_local(delay_send(
                     original,
                     response,
                     sender.clone(),
                     leveldb_helper.clone(),
+                    helper,
                 )));
             }
             TTSEvent::Data(data) => {
                 sender
-                    .send(TTSFinalEvent::NewData(Box::new(Cursor::new(data))))
+                    .send(TTSFinalEvent::NewData(Box::new(Cursor::new(data)), None))
                     .await
                     .ok();
             }
@@ -245,7 +247,7 @@ pub(crate) async fn send_audio(
 ) -> anyhow::Result<()> {
     while let Some(event) = receiver.recv().await {
         match event {
-            TTSFinalEvent::NewData(raw) => {
+            TTSFinalEvent::NewData(raw, helper) => {
                 let source = MediaSourceStream::new(raw, Default::default());
 
                 let mut reader = match symphonia::default::formats::OggReader::try_new(
@@ -254,6 +256,9 @@ pub(crate) async fn send_audio(
                 ) {
                     Ok(r) => r,
                     Err(e) => {
+                        if let Some(helper) = helper {
+                            helper.message(format!("Read stream error: {e:?}")).await;
+                        }
                         log::error!("Read stream error: {e:?}");
                         continue;
                     }
@@ -289,6 +294,9 @@ pub(crate) async fn send_audio(
                     }
                 }
                 sender.send(TeamSpeakEvent::Muted(true)).await.ok();
+                if let Some(helper) = helper {
+                    helper.message(format!("Send audio successful")).await;
+                }
             }
             TTSFinalEvent::Exit => break,
         }

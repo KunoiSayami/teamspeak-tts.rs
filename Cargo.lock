@@ -146,6 +146,7 @@ dependencies = [
  "async-trait",
  "axum-core",
  "axum-macros",
+ "base64 0.21.7",
  "bytes",
  "futures-util",
  "http",
@@ -164,8 +165,10 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
+ "sha1",
  "sync_wrapper 1.0.1",
  "tokio",
+ "tokio-tungstenite",
  "tower",
  "tower-layer",
  "tower-service",
@@ -225,6 +228,12 @@ name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
+
+[[package]]
+name = "base64"
+version = "0.21.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
 name = "base64"
@@ -291,9 +300,9 @@ checksum = "79296716171880943b8470b5f8d03aa55eb2e645a4874bdbb28adb49162e012c"
 
 [[package]]
 name = "bytemuck"
-version = "1.17.0"
+version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fd4c6dcc3b0aea2f5c0b4b82c2b15fe39ddbc76041a310848f4706edf76bb31"
+checksum = "773d90827bc3feecfb67fab12e24de0749aad83c74b9504ecde46237b5cd24e2"
 
 [[package]]
 name = "byteorder"
@@ -1671,7 +1680,7 @@ version = "0.12.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8f4955649ef5c38cc7f9e8aa41761d48fb9677197daea9984dc54f56aad5e63"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes",
  "futures-core",
  "futures-util",
@@ -1779,7 +1788,7 @@ version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "196fe16b00e106300d3e45ecfcb764fa292a535d7326a29a5875c579c7417425"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "rustls-pki-types",
 ]
 
@@ -1791,9 +1800,9 @@ checksum = "fc0a2ce646f8655401bb81e7927b812614bd5d91dbc968696be50603510fcaf0"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.102.6"
+version = "0.102.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e6b52d4fda176fd835fdc55a835d4a89b8499cad995885a21149d5ad62f852e"
+checksum = "84678086bd54edf2b415183ed7a94d0efb049f1b646a33e22a36f3794be6ae56"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -1920,6 +1929,17 @@ name = "sha-1"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5058ada175748e33390e40e872bd0fe59a19f265d0158daa551c5a88a76009c"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest 0.10.7",
+]
+
+[[package]]
+name = "sha1"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3bf829a2d51ab4a5ddf1352d8470c140cadc8301b2ae1789db023f01cedd6ba"
 dependencies = [
  "cfg-if",
  "cpufeatures",
@@ -2244,11 +2264,11 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "teamspeak-tts"
-version = "2.3.0"
+version = "3.0.0-rc"
 dependencies = [
  "anyhow",
  "axum",
- "base64",
+ "base64 0.22.1",
  "clap",
  "env_logger",
  "futures",
@@ -2258,6 +2278,7 @@ dependencies = [
  "reqwest",
  "rusty-leveldb",
  "serde",
+ "serde_json",
  "spin_sleep",
  "symphonia",
  "tap",
@@ -2400,6 +2421,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-tungstenite"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c83b561d025642014097b66e6c1bb422783339e0909e4429cde4749d1990bc38"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite",
+]
+
+[[package]]
 name = "tokio-util"
 version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2517,7 +2550,7 @@ name = "ts-bookkeeping"
 version = "0.1.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#8aad7dd78730c2a18fabe90a9eaf05f51f9c74aa"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "heck 0.5.0",
  "itertools",
  "num-derive",
@@ -2537,7 +2570,7 @@ name = "tsclientlib"
 version = "0.2.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#8aad7dd78730c2a18fabe90a9eaf05f51f9c74aa"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "futures",
  "git-testament",
  "hickory-proto",
@@ -2565,7 +2598,7 @@ version = "0.2.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#8aad7dd78730c2a18fabe90a9eaf05f51f9c74aa"
 dependencies = [
  "aes",
- "base64",
+ "base64 0.22.1",
  "curve25519-dalek-ng",
  "eax",
  "futures",
@@ -2594,7 +2627,7 @@ name = "tsproto-packets"
 version = "0.1.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#8aad7dd78730c2a18fabe90a9eaf05f51f9c74aa"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bitflags 2.6.0",
  "num-derive",
  "num-traits",
@@ -2609,7 +2642,7 @@ name = "tsproto-structs"
 version = "0.2.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#8aad7dd78730c2a18fabe90a9eaf05f51f9c74aa"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "csv",
  "heck 0.5.0",
  "once_cell",
@@ -2622,7 +2655,7 @@ name = "tsproto-types"
 version = "0.1.0"
 source = "git+https://github.com/ReSpeak/tsclientlib#8aad7dd78730c2a18fabe90a9eaf05f51f9c74aa"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bitflags 2.6.0",
  "curve25519-dalek-ng",
  "elliptic-curve",
@@ -2641,6 +2674,25 @@ dependencies = [
  "thiserror",
  "time",
  "tsproto-structs",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ef1a641ea34f399a848dea702823bbecfb4c486f911735368f1f137cb8257e1"
+dependencies = [
+ "byteorder",
+ "bytes",
+ "data-encoding",
+ "http",
+ "httparse",
+ "log",
+ "rand",
+ "sha1",
+ "thiserror",
+ "url",
+ "utf-8",
 ]
 
 [[package]]
@@ -2686,6 +2738,12 @@ dependencies = [
  "idna 0.5.0",
  "percent-encoding",
 ]
+
+[[package]]
+name = "utf-8"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 
 [[package]]
 name = "utf8parse"

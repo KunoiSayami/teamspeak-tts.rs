@@ -39,6 +39,8 @@ fn init_log(verbose: u8) {
         logger
             .filter_module("tracing::span", log::LevelFilter::Warn)
             .filter_module("h2", log::LevelFilter::Warn)
+            .filter_module("tokio_tungstenite", log::LevelFilter::Warn)
+            .filter_module("tungstenite::protocol", log::LevelFilter::Warn)
             .filter_module("tsproto::resend", log::LevelFilter::Warn);
     }
     logger.init();
