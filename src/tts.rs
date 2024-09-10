@@ -196,8 +196,13 @@ async fn delay_send(
         log::trace!("Skip {original_hash} length: {length}");
         return Ok(());
     }
+    let raw = { source.data.read().unwrap().to_vec() };
+    if raw.is_empty() {
+        log::warn!("Input data is empty");
+        return Ok(());
+    }
     leveldb_helper
-        .set(original_hash, source.data.read().unwrap().to_vec())
+        .set(original_hash, raw)
         .await
         .tap_err(|e| log::error!("Unable write cache: {e:?}"))?
         .tap(|s| {
@@ -263,6 +268,10 @@ pub(crate) async fn send_audio(
                         continue;
                     }
                 };
+
+                if let Some(ref helper) = helper {
+                    helper.message("Sending audio".to_string()).await;
+                }
 
                 sender.send(TeamSpeakEvent::Muted(false)).await.ok();
                 #[cfg(feature = "measure-time")]
@@ -333,13 +342,10 @@ impl Requester {
         }
     }
 
-    fn build_headers(&self, length: usize) -> HeaderMap {
+    fn build_headers(length: usize, key: &str) -> HeaderMap {
         let mut header = HeaderMap::new();
         header.insert(CONTENT_LENGTH, length.to_string().parse().unwrap());
-        header.insert(
-            "Ocp-Apim-Subscription-Key",
-            self.tts.ocp_apim_subscription_key().parse().unwrap(),
-        );
+        header.insert("Ocp-Apim-Subscription-Key", key.parse().unwrap());
         header
     }
 
@@ -356,17 +362,26 @@ impl Requester {
         gender: &str,
         name: String,
         text: &str,
-    ) -> reqwest::Result<Response> {
+    ) -> anyhow::Result<Response> {
         let ssml = Self::build_ssml(lang, gender, name, text);
         log::trace!("Request ssml: {ssml:?}");
-        let ret = self
-            .inner
-            .post(self.tts.endpoint())
-            .body(ssml.as_bytes().to_vec())
-            .headers(self.build_headers(ssml.len()))
-            .send()
-            .await?;
-        log::trace!("Api response: {}", ret.status());
+        let ret = loop {
+            let selected = self.tts.ocp_apim_subscription_key().await?;
+            let ret = self
+                .inner
+                .post(self.tts.endpoint())
+                .body(ssml.as_bytes().to_vec())
+                .headers(Self::build_headers(ssml.len(), &selected))
+                .send()
+                .await?;
+            log::trace!("Api response: {}", ret.status());
+            if ret.status().eq(&reqwest::StatusCode::UNAUTHORIZED) {
+                self.tts.remove_key(&selected).await?;
+                continue;
+            } else {
+                break ret;
+            }
+        };
 
         Ok(ret)
     }

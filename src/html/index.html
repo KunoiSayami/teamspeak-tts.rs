@@ -8,31 +8,6 @@
 <script>
    'use strict';
 
-   function submit() {
-      let headMessage = document.getElementById("head-message");
-      let status = document.getElementById("status");
-      let value = document.getElementById("text").value;
-      let sex = document.getElementById("sex").value;
-      let code = document.getElementById("code").value;
-      let variant = document.getElementById("variant").value;
-      let r = new XMLHttpRequest();
-      r.open("POST", "/", true);
-      r.setRequestHeader("Content-Type", "application/json");
-      r.onreadystatechange = () => {
-         if (r.readyState != 4 || r.status != 200) {
-            headMessage.style.display = "inline";
-            status.innerText = r.responseText;
-            status.style.display = "inline";
-            setTimeout(() => {
-               headMessage.style.display = "none";
-               status.style.display = "none";
-            }, 3000);
-            return;
-         }
-      };
-      r.send(JSON.stringify({ content: value, sex: sex, code: code, variant: variant }));
-   }
-
    function submitWebsocket() {
       let headMessage = document.getElementById("head-message");
       let status = document.getElementById("status");
@@ -72,7 +47,6 @@
 
    function getVariant() {
       let x = window.localStorage.getItem("tts-variant");
-      //console.log(x);
       if (x != null) {
          return JSON.parse(x);
       }
@@ -122,40 +96,58 @@
    const genContent = (content) => {
       return new Date().toLocaleString() + " " + content + "\n";
    }
+   ws.showConnected = () => {
+      const element = document.getElementById("ws-status");
+      element.innerText = "⬤ Connected";
+      element.style.color = "green";
+   }
+   ws.showDisconnected = () => {
+      const element = document.getElementById("ws-status");
+      element.innerText = "⬤ Disconnected";
+      element.style.color = "red";
+   }
+
+
+   const getTime = () => {
+      const time = new Date();
+      return time.getFullYear() + '-' + time.getMonth() + '-' + time.getDay() + ' ' +
+         time.getHours() + ':' + time.getMinutes() + ':' + time.getSeconds() + '.' + time.getMilliseconds();
+   }
+
+   ws.appendLog = (content) => {
+      document.getElementById("logs").value += getTime() + " " + content + "\n";
+   }
 
    ws.onOpen = (_evt) => {
       console.info('[WS] Connected');
-      document.getElementById("logs").value += genContent("Websocket connected");
-      ws.prompted = false;
+      ws.appendLog("Websocket connected");
+      ws.showConnected();
    }
 
    ws.onMessage = (evt) => {
       console.log(evt);
-      document.getElementById("logs").value += genContent(evt.data);
+      ws.appendLog(evt.data);
    }
 
    ws.onError = (evt) => {
       console.error('[WS] Error => ' + evt.data);
-      document.getElementById("logs").value += genContent("Websocket error => " + evt.data);
-      if (!ws.prompted) {
-         ws.prompted = true;
-         alert('Websocket got error, please check console to get more information');
-      }
+      ws.appendLog("Websocket error => " + evt.data);
       try {
          websocket.close();
       } catch (e) {
       }
+      ws.showDisconnected();
       websocket = null;
    }
 
    ws.onClose = (_evt) => {
       console.info('[WS] Disconnected');
-      document.getElementById("logs").value += genContent("Websocket disconnected");
+      ws.appendLog("Websocket disconnected");
+      ws.showDisconnected();
       websocket = null;
    }
 
    let websocket = null;
-   ws.prompted = false;
    const REMOTE_ENDPOINT = "/ws";
 
    ws.sendMessage = (message, retries = 3) => {
@@ -205,6 +197,7 @@
       // https://stackoverflow.com/questions/1684196/
       textarea.addEventListener('keydown', e => { if (e.ctrlKey && e.keyCode === 13) submit(); })
 
+      ws.showDisconnected();
       initOptions();
       ws.create_websocket_connect(REMOTE_ENDPOINT);
 
@@ -215,14 +208,13 @@
 </script>
 
 <body>
-   <span id="head-message" style="display: none;">Send success</span>&nbsp;<span id="status"></span>
+   <span id="ws-status"></span>
    <br />
    <select id="sex"></select><select id="code"></select><select id="variant"></select>
    <br />
    <textarea id="text" rows="5" cols="60" name="content"></textarea>
    <br />
-   <button onclick="submitWebsocket()">submit(ws)</button>
-   <button onclick="submit()">submit</button>
+   <button onclick="submitWebsocket()">submit</button>
    <button onclick="clearText()">clear</button>
    <br />
    <br />

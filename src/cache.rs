@@ -117,6 +117,9 @@ impl LevelDB {
 
 impl ConnAgent {
     pub async fn set(&self, key: KeyType, value: Vec<u8>) -> anyhow::Result<Option<()>> {
+        if value.is_empty() {
+            return Ok(None);
+        }
         self.0
             .set(key, value)
             .await
@@ -131,7 +134,11 @@ impl ConnAgent {
     }
 
     pub async fn get(&self, key: KeyType) -> Option<Vec<u8>> {
-        self.0.get(key).await.flatten()
+        let ret = self.0.get(key).await.flatten()?;
+        if ret.is_empty() {
+            return None;
+        }
+        Some(ret)
     }
 }
 

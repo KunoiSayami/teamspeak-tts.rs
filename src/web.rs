@@ -8,12 +8,12 @@ use axum::{
     },
     response::{Html, IntoResponse},
     routing::get,
-    Extension, Json,
+    Extension,
 };
 use futures::{SinkExt, StreamExt};
 use kstool_helper_generator::Helper;
 use serde::Deserialize;
-use tap::{Tap, TapFallible};
+use tap::TapFallible;
 use tokio::sync::{broadcast, mpsc};
 use xxhash_rust::xxh3;
 
@@ -103,7 +103,7 @@ pub async fn route(
     let client = Requester::new(config.tts().clone());
 
     let router = axum::Router::new()
-        .route("/", axum::routing::get(load_homepage).post(handler))
+        .route("/", axum::routing::get(load_homepage))
         .route("/ws", axum::routing::get(ws_upgrade))
         .route(
             "/mstts.js",
@@ -178,7 +178,7 @@ async fn ws_handler(socket: WebSocket, extension: Arc<WebExtension>) -> anyhow::
                                 handle_request(data, &extension, &outer_sender)
                                     .await
                                     .unwrap_or_else(|e| e.to_string())
-                                    .tap(|s| log::debug!("{s:?}"))
+                                    //.tap(|s| log::debug!("{s:?}"))
                                 )).await.tap_err(|e| log::error!("{e:?}")).ok();
                         },
                         Err(e) => log::warn!("{e:?}"),
@@ -217,13 +217,8 @@ async fn handle_request(
     let code = match extension.leveldb_helper.get(hash).await {
         Some(data) => {
             log::trace!("Cache {hash} hit!");
-            if !data.is_empty() {
-                extension.sender.send(TTSEvent::Data(data)).await.ok();
-                "Hit cache"
-            } else {
-                "Cache is empty"
-            }
-            .to_string()
+            extension.sender.send(TTSEvent::Data(data)).await.ok();
+            "Hit cache".to_string()
         }
         None => {
             let ret = extension
@@ -244,46 +239,5 @@ async fn handle_request(
             code.to_string()
         }
     };
-    Ok(code)
-}
-
-async fn handler(
-    Extension(extension): Extension<Arc<WebExtension>>,
-    Json(data): Json<Data>,
-) -> Result<String, String> {
-    let hash = data.hash();
-    let code = match extension.leveldb_helper.get(hash).await {
-        Some(data) => {
-            log::trace!("Cache {hash} hit!");
-            if !data.is_empty() {
-                extension.sender.send(TTSEvent::Data(data)).await.ok();
-                "[Deprecated] Hit cache"
-            } else {
-                "[Deprecated] Cache is empty"
-            }
-            .to_string()
-        }
-        None => {
-            let ret = extension
-                .requester
-                .request(&data.code, &data.sex, data.variant(), &data.content)
-                .await
-                .map_err(|e| e.to_string())?;
-            let code = ret.status();
-            extension
-                .sender
-                .send(TTSEvent::NewData(
-                    (data.hash(), data.content.len()),
-                    ret,
-                    None,
-                ))
-                .await
-                .tap_err(|_| log::error!("Fail to send response"))
-                .ok();
-            format!("[Deprecated] {code}")
-        }
-    };
-
-    //log::debug!("Data length: {}", data.len());
     Ok(code)
 }

@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use anyhow::anyhow;
 use serde::Deserialize;
 use tap::Tap;
-use tokio::fs::read_to_string;
+use tokio::{fs::read_to_string, sync::RwLock};
 use tsclientlib::ClientDbId;
 
 fn default_nickname() -> String {
@@ -19,18 +21,18 @@ pub enum ArrayOrSingle<T> {
     Multiple(Vec<T>),
 }
 
-impl<T: std::fmt::Debug> ArrayOrSingle<T> {
+/* impl<T: std::fmt::Debug> ArrayOrSingle<T> {
     pub fn get_one(&self) -> &T {
         match self {
-            ArrayOrSingle::Single(v) => &v,
-            ArrayOrSingle::Multiple(v) => {
-                rand::seq::SliceRandom::choose(&v[..], &mut rand::thread_rng())
-                    .unwrap()
-                    .tap(|s| log::trace!("Select code {s:?}"))
-            }
+            Self::Single(v) => &v,
+            Self::Multiple(v) => rand::seq::SliceRandom::choose(&v[..], &mut rand::thread_rng())
+                .unwrap()
+                .tap(|s| log::trace!("Select code {s:?}")),
         }
     }
+} */
 
+impl<T> ArrayOrSingle<T> {
     pub fn validate(&self) -> Result<(), &'static str> {
         if let Self::Multiple(v) = self {
             if v.is_empty() {
@@ -38,6 +40,13 @@ impl<T: std::fmt::Debug> ArrayOrSingle<T> {
             }
         }
         Ok(())
+    }
+
+    pub fn to_vec(self) -> Vec<T> {
+        match self {
+            Self::Single(v) => vec![v],
+            Self::Multiple(v) => v,
+        }
     }
 }
 
@@ -61,10 +70,6 @@ impl Config {
 
     pub fn web(&self) -> &Web {
         &self.web
-    }
-
-    pub fn validate(&self) -> anyhow::Result<()> {
-        self.tts.validate().map_err(|e| anyhow!(e))
     }
 
     pub fn teamspeak(&self) -> &TeamSpeak {
@@ -110,11 +115,52 @@ impl TeamSpeak {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct KeyStore {
+    inner: Arc<RwLock<Vec<String>>>,
+}
+
+impl<'de> Deserialize<'de> for KeyStore {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let inner: ArrayOrSingle<String> = ArrayOrSingle::deserialize(deserializer)?;
+        inner.validate().map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            inner: Arc::new(RwLock::new(inner.to_vec())),
+        })
+    }
+}
+
+impl KeyStore {
+    pub async fn get_one(&self) -> anyhow::Result<String> {
+        let delegate = self.inner.read().await;
+        if delegate.is_empty() {
+            return Err(anyhow!("KeyStore is empty"));
+        }
+        Ok(
+            rand::seq::SliceRandom::choose(&delegate[..], &mut rand::thread_rng())
+                .unwrap()
+                .tap(|s| log::trace!("Select key: {s:?}"))
+                .to_string(),
+        )
+    }
+
+    pub async fn remove(&self, key: &str) -> Option<usize> {
+        let mut delegate = self.inner.write().await;
+        let loc = delegate.iter().position(|x| x.eq(key))?;
+        delegate.swap_remove(loc);
+        log::trace!("Remove api key {key:?}");
+        Some(delegate.len())
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct TTS {
     endpoint: String,
     #[serde(alias = "Ocp-Apim-Subscription-Key")]
-    ocp_apim_subscription_key: ArrayOrSingle<String>,
+    ocp_apim_subscription_key: KeyStore,
 }
 
 impl TTS {
@@ -122,12 +168,20 @@ impl TTS {
         &self.endpoint
     }
 
-    pub fn ocp_apim_subscription_key(&self) -> &str {
-        self.ocp_apim_subscription_key.get_one()
+    pub async fn ocp_apim_subscription_key(&self) -> anyhow::Result<String> {
+        self.ocp_apim_subscription_key.get_one().await
     }
 
-    pub fn validate(&self) -> Result<(), &'static str> {
-        self.ocp_apim_subscription_key.validate()
+    pub async fn remove_key(&self, key: &str) -> anyhow::Result<()> {
+        self.ocp_apim_subscription_key
+            .remove(key)
+            .await
+            .ok_or_else(|| anyhow!("Key not found"))
+            .and_then(|size| {
+                (size == 0)
+                    .then_some(())
+                    .ok_or_else(|| anyhow!("Keystore is empty"))
+            })
     }
 }
 #[derive(Clone, Debug, Deserialize)]

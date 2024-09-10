@@ -71,8 +71,6 @@ fn main() -> Result<()> {
 async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()> {
     let config = Config::load(path).await?;
 
-    config.validate()?;
-
     let (teamspeak_sender, teamspeak_recv) = mpsc::channel(16);
     let (audio_sender, audio_receiver) = mpsc::channel(32);
     let (middle_sender, middle_receiver) = mpsc::channel(32);
