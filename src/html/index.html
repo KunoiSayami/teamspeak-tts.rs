@@ -91,6 +91,11 @@
       variant.addEventListener('change', saveVariant);
    }
 
+   const shownDebug = () => {
+      const element = document.getElementById("debug-menu");
+      element.style.display = "block";
+   }
+
    const ws = () => { };
 
    const genContent = (content) => {
@@ -107,31 +112,41 @@
       element.style.color = "red";
    }
 
+   const padStart = (input, length = 2) => {
+      return (input + '').padStart(length, '0');
+   }
 
    const getTime = () => {
       const time = new Date();
-      return time.getFullYear() + '-' + time.getMonth() + '-' + time.getDay() + ' ' +
-         time.getHours() + ':' + time.getMinutes() + ':' + time.getSeconds() + '.' + time.getMilliseconds();
+      return time.getFullYear() + '-' + padStart(time.getMonth()) + '-' + padStart(time.getDay()) + ' ' +
+         padStart(time.getHours()) + ':' + padStart(time.getMinutes()) + ':' + padStart(time.getSeconds()) + '.' + padStart(time.getMilliseconds(), 3);
    }
 
-   ws.appendLog = (content) => {
-      document.getElementById("logs").value += getTime() + " " + content + "\n";
+   const appendLog = (content) => {
+      const logArea = document.getElementById("logs");
+      logArea.value += getTime() + " " + content + "\n";
+      logArea.scrollTop = logArea.scrollHeight;
+   }
+
+   const clearLog = () => {
+      document.getElementById('logs').value = '';
+      appendLog('Log cleared');
    }
 
    ws.onOpen = (_evt) => {
       console.info('[WS] Connected');
-      ws.appendLog("Websocket connected");
+      appendLog("Websocket connected");
       ws.showConnected();
    }
 
    ws.onMessage = (evt) => {
       console.log(evt);
-      ws.appendLog(evt.data);
+      appendLog(evt.data);
    }
 
    ws.onError = (evt) => {
       console.error('[WS] Error => ' + evt.data);
-      ws.appendLog("Websocket error => " + evt.data);
+      appendLog("Websocket error => " + evt.data);
       try {
          websocket.close();
       } catch (e) {
@@ -142,7 +157,7 @@
 
    ws.onClose = (_evt) => {
       console.info('[WS] Disconnected');
-      ws.appendLog("Websocket disconnected");
+      appendLog("Websocket disconnected");
       ws.showDisconnected();
       websocket = null;
    }
@@ -160,7 +175,7 @@
       websocket.send(message);
    }
 
-   ws.create_websocket_connect = function (url) {
+   ws.create_websocket_connect = function (url = REMOTE_ENDPOINT) {
       if (websocket !== null &&
          (websocket.readyState !== WebSocket.CLOSED ||
             websocket.readyState !== WebSocket.CLOSING)) {
@@ -199,10 +214,16 @@
 
       ws.showDisconnected();
       initOptions();
-      ws.create_websocket_connect(REMOTE_ENDPOINT);
+      ws.create_websocket_connect();
 
       window.addEventListener("beforeunload", (_e) => {
          ws.disconnect();
+      });
+
+      window.addEventListener("focus", () => {
+         if (websocket === null) {
+            ws.create_websocket_connect();
+         }
       });
    });
 </script>
@@ -216,10 +237,19 @@
    <br />
    <button onclick="submitWebsocket()">submit</button>
    <button onclick="clearText()">clear</button>
+   <button onclick="shownDebug()"
+      style="background: transparent; border: none !important; font-size:0; width: 50px; height: 10px;">clear</button>
    <br />
    <br />
    logs:<br />
    <textarea id="logs" rows="15" cols="60" readonly></textarea>
+   <br />
+   <div id="debug-menu" style="display: none;">
+      Debug menu:&nbsp;
+      <button onclick="ws.create_websocket_connect()">connect</button>
+      <button onclick="ws.disconnect()">disconnect</button>
+      <button onclick="clearLog()">clear logs</button>
+   </div>
 </body>
 
 </html>

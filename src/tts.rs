@@ -100,13 +100,13 @@ impl OutMessageTrait for TeamSpeakEvent {
 }
 
 pub(crate) enum TTSEvent {
-    NewData((u64, usize), reqwest::Response, Option<WebsocketHelper>),
-    Data(Vec<u8>),
+    NewData((u64, usize), reqwest::Response, WebsocketHelper),
+    Data(Vec<u8>, WebsocketHelper),
     Exit,
 }
 
 pub(crate) enum TTSFinalEvent {
-    NewData(Box<dyn MediaSource>, Option<WebsocketHelper>),
+    NewData(Box<dyn MediaSource>, WebsocketHelper),
     Exit,
 }
 
@@ -177,7 +177,7 @@ async fn delay_send(
     response: Response,
     sender: Arc<mpsc::Sender<TTSFinalEvent>>,
     leveldb_helper: Arc<ConnAgent>,
-    helper: Option<WebsocketHelper>,
+    helper: WebsocketHelper,
 ) -> anyhow::Result<()> {
     let source = MutableMediaSource::new();
     let (s, receiver) = oneshot::channel();
@@ -231,9 +231,9 @@ pub(crate) async fn audio_middleware(
                     helper,
                 )));
             }
-            TTSEvent::Data(data) => {
+            TTSEvent::Data(data, helper) => {
                 sender
-                    .send(TTSFinalEvent::NewData(Box::new(Cursor::new(data)), None))
+                    .send(TTSFinalEvent::NewData(Box::new(Cursor::new(data)), helper))
                     .await
                     .ok();
             }
@@ -261,17 +261,14 @@ pub(crate) async fn send_audio(
                 ) {
                     Ok(r) => r,
                     Err(e) => {
-                        if let Some(helper) = helper {
-                            helper.message(format!("Read stream error: {e:?}")).await;
-                        }
+                        helper.message(format!("Read stream error: {e:?}")).await;
+
                         log::error!("Read stream error: {e:?}");
                         continue;
                     }
                 };
 
-                if let Some(ref helper) = helper {
-                    helper.message("Sending audio".to_string()).await;
-                }
+                helper.message("Sending audio".to_string()).await;
 
                 sender.send(TeamSpeakEvent::Muted(false)).await.ok();
                 #[cfg(feature = "measure-time")]
@@ -303,9 +300,7 @@ pub(crate) async fn send_audio(
                     }
                 }
                 sender.send(TeamSpeakEvent::Muted(true)).await.ok();
-                if let Some(helper) = helper {
-                    helper.message(format!("Send audio successful")).await;
-                }
+                helper.message(format!("Send audio successful")).await;
             }
             TTSFinalEvent::Exit => break,
         }

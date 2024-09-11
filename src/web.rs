@@ -175,7 +175,7 @@ async fn ws_handler(socket: WebSocket, extension: Arc<WebExtension>) -> anyhow::
                                 break
                             }
                             sender.send(Message::Text(
-                                handle_request(data, &extension, &outer_sender)
+                                handle_request(data, &extension, outer_sender.clone())
                                     .await
                                     .unwrap_or_else(|e| e.to_string())
                                     //.tap(|s| log::debug!("{s:?}"))
@@ -211,13 +211,17 @@ fn decode_message(msg: &Message) -> anyhow::Result<Data> {
 async fn handle_request(
     data: Data,
     extension: &Arc<WebExtension>,
-    sender: &WebsocketHelper,
+    sender: WebsocketHelper,
 ) -> anyhow::Result<String> {
     let hash = data.hash();
     let code = match extension.leveldb_helper.get(hash).await {
         Some(data) => {
             log::trace!("Cache {hash} hit!");
-            extension.sender.send(TTSEvent::Data(data)).await.ok();
+            extension
+                .sender
+                .send(TTSEvent::Data(data, sender))
+                .await
+                .ok();
             "Hit cache".to_string()
         }
         None => {
@@ -231,7 +235,7 @@ async fn handle_request(
                 .send(TTSEvent::NewData(
                     (data.hash(), data.content.len()),
                     ret,
-                    Some(sender.clone()),
+                    sender,
                 ))
                 .await
                 .tap_err(|_| log::error!("Fail to send response"))
