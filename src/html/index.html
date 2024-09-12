@@ -4,11 +4,13 @@
 <head>
    <title>TTS</title>
 </head>
-<script src="/mstts.js?time=20240825"></script>
+<script src="/mstts.js?time=20240912"></script>
 <script>
    'use strict';
 
    const property = () => { };
+   property.needClear = true;
+   property.autoFocus = true;
 
    function decodeOrInit(storage) {
       const a = localStorage.getItem(storage);
@@ -21,18 +23,22 @@
 
    property.appendHistory = data => {
       const raw = decodeOrInit('tts-history');
-      console.log(data);
-      if (raw.indexOf(data) !== -1) {
+      const index = raw.indexOf(data);
+      if (raw.length > 0 && index === raw.length - 1) {
          return;
+      }
+      const origin = document.getElementById('history');
+      if (index !== -1) {
+         origin.removeChild(origin.children[raw.length - index - 1]);
+         raw.splice(index, 1);
       }
 
       raw.push(data);
       localStorage.setItem('tts-history', JSON.stringify(raw));
-      property.insertHistoryOption(data);
+      property.insertHistoryOption(data, origin);
 
       if (raw.length > 15) {
          raw.splice(0, 1);
-         const origin = document.getElementById('history');
          origin.removeChild(origin.lastChild);
       }
    }
@@ -95,16 +101,21 @@
       }
 
       property.appendHistory(value);
-      textarea.value = '';
+      if (property.needClear)
+         textarea.value = '';
+      if (property.autoFocus)
+         textarea.focus();
    }
 
 
    function clearText() {
-      document.getElementById("text").value = "";
+      const element = document.getElementById("text");
+      element.value = "";
+      element.focus();
    }
 
    function saveText() {
-      let value = document.getElementById("text").value;
+      const value = document.getElementById("text").value;
       window.localStorage.setItem("tts", value);
       setTimeout(saveText, 3000);
    }
@@ -341,6 +352,12 @@
          localStorage.setItem('isSteam', property.isSteam.toString());
          property.init();
       });
+      document.getElementById("need-clear").addEventListener('change', event => {
+         property.needClear = event.target.checked;
+      });
+      document.getElementById("auto-focus").addEventListener('change', event => {
+         property.autoFocus = event.target.checked;
+      });
 
       window.addEventListener("focus", () => {
          if (websocket === null && !property.isSteam) {
@@ -366,6 +383,8 @@
    <button id="ws-submit" onclick="submit()">submit</button>
    <button onclick="submit(false)">submit(post)</button>
    <button onclick="clearText()">clear</button>
+   <label for="need-clear">clear after send</label><input id="need-clear" checked type="checkbox" />
+   <label for="auto-focus">auto focus</label><input id="auto-focus" checked type="checkbox" />
    <button onclick="shownDebug()"
       style="background: transparent; border: none !important; font-size:0; width: 50px; height: 10px;">clear</button>
    <br />
@@ -382,7 +401,7 @@
    </div>
    <br />
    <div id="debug-menu" style="display: none;">
-      Debug menu:&nbsp;
+      Debug menu:&nbsp;<br />
       <button onclick="ws.create_websocket_connect()">connect</button>
       <button onclick="ws.disconnect()">disconnect</button>
       <button onclick="clearLog()">clear logs</button>
