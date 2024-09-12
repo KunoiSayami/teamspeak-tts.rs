@@ -8,6 +8,31 @@
 <script>
    'use strict';
 
+   function submit() {
+      let headMessage = document.getElementById("head-message");
+      let status = document.getElementById("status");
+      let value = document.getElementById("text").value;
+      let sex = document.getElementById("sex").value;
+      let code = document.getElementById("code").value;
+      let variant = document.getElementById("variant").value;
+      let r = new XMLHttpRequest();
+      r.open("POST", "/", true);
+      r.setRequestHeader("Content-Type", "application/json");
+      r.onreadystatechange = () => {
+         if (r.readyState != 4 || r.status != 200) {
+            headMessage.style.display = "inline";
+            status.innerText = r.responseText;
+            status.style.display = "inline";
+            setTimeout(() => {
+               headMessage.style.display = "none";
+               status.style.display = "none";
+            }, 3000);
+            return;
+         }
+      };
+      r.send(JSON.stringify({ content: value, sex: sex, code: code, variant: variant }));
+   }
+
    function submitWebsocket() {
       let headMessage = document.getElementById("head-message");
       let status = document.getElementById("status");
@@ -89,6 +114,11 @@
          saveVariant();
       });
       variant.addEventListener('change', saveVariant);
+      if (localStorage.getItem('isSteam') === 'true') {
+         property.isSteam = true;
+         document.getElementById("is-steam").checked = true;
+         property.init();
+      }
    }
 
    const shownDebug = () => {
@@ -201,6 +231,27 @@
       websocket = null;
    }
 
+   const property = () => { };
+
+   property.isSteam = false;
+
+   property.enableSteam = () => {
+      for (const element of ["ws-submit", "ws-status", "log-area"])
+         document.getElementById(element).style.display = "none";
+   };
+   property.disableSteam = () => {
+      for (const element of ["ws-submit", "ws-status", "log-area"])
+         document.getElementById(element).style.display = "";
+   };
+
+   property.init = () => {
+      if (property.isSteam) {
+         property.enableSteam();
+      } else {
+         property.disableSteam();
+      }
+   }
+
    document.addEventListener("DOMContentLoaded", function (event) {
       let textarea = document.getElementById("text");
       let s = window.localStorage.getItem("tts");
@@ -210,7 +261,14 @@
       setTimeout(saveText, 3000);
 
       // https://stackoverflow.com/questions/1684196/
-      textarea.addEventListener('keydown', e => { if (e.ctrlKey && e.keyCode === 13) submit(); })
+      textarea.addEventListener('keydown', e => {
+         if (e.ctrlKey && e.keyCode === 13) {
+            if (property.isSteam)
+               submit();
+            else
+               submitWebsocket();
+         }
+      })
 
       ws.showDisconnected();
       initOptions();
@@ -218,6 +276,12 @@
 
       window.addEventListener("beforeunload", (_e) => {
          ws.disconnect();
+      });
+
+      document.getElementById("is-steam").addEventListener('change', event => {
+         property.isSteam = event.target.checked;
+         localStorage.setItem('isSteam', property.isSteam.toString());
+         property.init();
       });
 
       window.addEventListener("focus", () => {
@@ -229,20 +293,25 @@
 </script>
 
 <body>
+   <label for="is-steam">steam</label><input id="is-steam" type="checkbox" />
    <span id="ws-status"></span>
+   <span id="head-message" style="display: none;">Send success</span>&nbsp;<span id="status"></span>
    <br />
    <select id="sex"></select><select id="code"></select><select id="variant"></select>
    <br />
    <textarea id="text" rows="5" cols="60" name="content"></textarea>
    <br />
-   <button onclick="submitWebsocket()">submit</button>
+   <button id="ws-submit" onclick="submitWebsocket()">submit</button>
+   <button onclick="submit()">submit(post)</button>
    <button onclick="clearText()">clear</button>
    <button onclick="shownDebug()"
       style="background: transparent; border: none !important; font-size:0; width: 50px; height: 10px;">clear</button>
    <br />
    <br />
-   logs:<br />
-   <textarea id="logs" rows="15" cols="60" readonly></textarea>
+   <div id="log-area">
+      logs:<br />
+      <textarea id="logs" rows="15" cols="60" readonly></textarea>
+   </div>
    <br />
    <div id="debug-menu" style="display: none;">
       Debug menu:&nbsp;

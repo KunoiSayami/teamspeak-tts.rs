@@ -8,7 +8,7 @@ use axum::{
     },
     response::{Html, IntoResponse},
     routing::get,
-    Extension,
+    Extension, Json,
 };
 use futures::{SinkExt, StreamExt};
 use kstool_helper_generator::Helper;
@@ -36,6 +36,33 @@ pub enum TTSRequest {
 #[derive(Helper)]
 pub enum WebsocketEvent {
     Message(String),
+}
+
+#[derive(Clone, Default)]
+pub struct MessageHelper {
+    inner: Option<WebsocketHelper>,
+}
+
+impl MessageHelper {
+    pub async fn message(&self, input: String) -> Option<()> {
+        if let Some(ref inner) = self.inner {
+            inner.message(input).await
+        } else {
+            Some(())
+        }
+    }
+}
+
+impl From<Option<WebsocketHelper>> for MessageHelper {
+    fn from(value: Option<WebsocketHelper>) -> Self {
+        Self { inner: value }
+    }
+}
+
+impl From<WebsocketHelper> for MessageHelper {
+    fn from(value: WebsocketHelper) -> Self {
+        Self { inner: Some(value) }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -103,7 +130,7 @@ pub async fn route(
     let client = Requester::new(config.tts().clone());
 
     let router = axum::Router::new()
-        .route("/", axum::routing::get(load_homepage))
+        .route("/", axum::routing::get(load_homepage).post(post_handler))
         .route("/ws", axum::routing::get(ws_upgrade))
         .route(
             "/mstts.js",
@@ -175,7 +202,7 @@ async fn ws_handler(socket: WebSocket, extension: Arc<WebExtension>) -> anyhow::
                                 break
                             }
                             sender.send(Message::Text(
-                                handle_request(data, &extension, outer_sender.clone())
+                                handle_request(data, &extension, outer_sender.clone().into())
                                     .await
                                     .unwrap_or_else(|e| e.to_string())
                                     //.tap(|s| log::debug!("{s:?}"))
@@ -211,7 +238,7 @@ fn decode_message(msg: &Message) -> anyhow::Result<Data> {
 async fn handle_request(
     data: Data,
     extension: &Arc<WebExtension>,
-    sender: WebsocketHelper,
+    sender: MessageHelper,
 ) -> anyhow::Result<String> {
     let hash = data.hash();
     let code = match extension.leveldb_helper.get(hash).await {
@@ -243,5 +270,46 @@ async fn handle_request(
             code.to_string()
         }
     };
+    Ok(code)
+}
+
+async fn post_handler(
+    Extension(extension): Extension<Arc<WebExtension>>,
+    Json(data): Json<Data>,
+) -> Result<String, String> {
+    let hash = data.hash();
+    let code = match extension.leveldb_helper.get(hash).await {
+        Some(data) => {
+            log::trace!("Cache {hash} hit!");
+
+            extension
+                .sender
+                .send(TTSEvent::Data(data, None.into()))
+                .await
+                .ok();
+            "Hit cache".to_string()
+        }
+        None => {
+            let ret = extension
+                .requester
+                .request(&data.code, &data.sex, data.variant(), &data.content)
+                .await
+                .map_err(|e| e.to_string())?;
+            let code = ret.status();
+            extension
+                .sender
+                .send(TTSEvent::NewData(
+                    (data.hash(), data.content.len()),
+                    ret,
+                    None.into(),
+                ))
+                .await
+                .tap_err(|_| log::error!("Fail to send response"))
+                .ok();
+            code.to_string()
+        }
+    };
+
+    //log::debug!("Data length: {}", data.len());
     Ok(code)
 }

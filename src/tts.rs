@@ -18,7 +18,7 @@ use tokio::{sync::mpsc, task::LocalSet};
 use tsclientlib::prelude::OutMessageTrait;
 use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
 
-use crate::{cache::ConnAgent, config::TTS, web::WebsocketHelper};
+use crate::{cache::ConnAgent, config::TTS, web::MessageHelper};
 
 pub struct MiddlewareTask {
     handle: std::thread::JoinHandle<anyhow::Result<()>>,
@@ -100,13 +100,13 @@ impl OutMessageTrait for TeamSpeakEvent {
 }
 
 pub(crate) enum TTSEvent {
-    NewData((u64, usize), reqwest::Response, WebsocketHelper),
-    Data(Vec<u8>, WebsocketHelper),
+    NewData((u64, usize), reqwest::Response, MessageHelper),
+    Data(Vec<u8>, MessageHelper),
     Exit,
 }
 
 pub(crate) enum TTSFinalEvent {
-    NewData(Box<dyn MediaSource>, WebsocketHelper),
+    NewData(Box<dyn MediaSource>, MessageHelper),
     Exit,
 }
 
@@ -177,7 +177,7 @@ async fn delay_send(
     response: Response,
     sender: Arc<mpsc::Sender<TTSFinalEvent>>,
     leveldb_helper: Arc<ConnAgent>,
-    helper: WebsocketHelper,
+    helper: MessageHelper,
 ) -> anyhow::Result<()> {
     let source = MutableMediaSource::new();
     let (s, receiver) = oneshot::channel();
