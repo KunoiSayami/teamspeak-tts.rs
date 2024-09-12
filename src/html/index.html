@@ -247,8 +247,8 @@
    }
 
    ws.onError = (evt) => {
-      console.error('[WS] Error => ' + evt.data);
-      appendLog("Websocket error => " + evt.data);
+      console.error('[WS] Error => ' + evt.toString());
+      appendLog("Websocket error => " + evt.toString());
       try {
          websocket.close();
       } catch (e) {
@@ -278,16 +278,32 @@
    }
 
    ws.create_websocket_connect = (url = REMOTE_ENDPOINT) => {
+      const replaceUrl = (url) => {
+         const replaceTarget = location.protocol === 'https:' ? "https://" : "http://";
+         const replaceTo = location.protocol === 'https:' ? "wss://" : "ws://";
+         if (window.location.href.endsWith('/') && url.startsWith('/')) {
+            url = url.slice(1);
+         }
+         return window.location.href.replace(replaceTarget, replaceTo) + url;
+      }
       if (websocket !== null &&
          (websocket.readyState !== WebSocket.CLOSED ||
             websocket.readyState !== WebSocket.CLOSING)) {
          return;
       }
-      websocket = new WebSocket(url);
+      websocket = new WebSocket(replaceUrl(url));
       websocket.onopen = ws.onOpen;
       websocket.onclose = ws.onClose;
       websocket.onmessage = ws.onMessage;
       websocket.onerror = ws.onError;
+   }
+
+   ws.firstConnect = () => {
+      try {
+         ws.create_websocket_connect()
+      } catch (e) {
+         appendLog(e.toString());
+      }
    }
 
    ws.disconnect = function () {
@@ -340,7 +356,7 @@
 
       ws.showDisconnected();
       initOptions();
-      ws.create_websocket_connect();
+
       property.loadHistory();
 
       window.addEventListener("beforeunload", (_e) => {
@@ -368,6 +384,7 @@
       document.getElementById("history").addEventListener("change", event => {
          document.getElementById("text").value = event.target.value;
       });
+      ws.firstConnect();
    });
 </script>
 
