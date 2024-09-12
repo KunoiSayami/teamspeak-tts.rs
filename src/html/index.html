@@ -8,14 +8,58 @@
 <script>
    'use strict';
 
-   function submit() {
-      let headMessage = document.getElementById("head-message");
-      let status = document.getElementById("status");
-      let value = document.getElementById("text").value;
-      let sex = document.getElementById("sex").value;
-      let code = document.getElementById("code").value;
-      let variant = document.getElementById("variant").value;
-      let r = new XMLHttpRequest();
+   const property = () => { };
+
+   function decodeOrInit(storage) {
+      const a = localStorage.getItem(storage);
+      if (a === null) {
+         return [];
+      } else {
+         return JSON.parse(a);
+      }
+   }
+
+   property.appendHistory = data => {
+      const raw = decodeOrInit('tts-history');
+      console.log(data);
+      if (raw.indexOf(data) !== -1) {
+         return;
+      }
+
+      raw.push(data);
+      localStorage.setItem('tts-history', JSON.stringify(raw));
+      property.insertHistoryOption(data);
+
+      if (raw.length > 15) {
+         raw.splice(0, 1);
+         const origin = document.getElementById('history');
+         origin.removeChild(origin.lastChild);
+      }
+   }
+
+   property.insertHistoryOption = (data, original = null) => {
+      if (original === null) {
+         original = document.getElementById('history');
+      }
+      const element = document.createElement('option');
+      element.value = data;
+      element.innerText = data;
+      original.insertBefore(element, original.firstChild);
+      original.selectedIndex = -1;
+   }
+
+   property.loadHistory = () => {
+      const raw = decodeOrInit('tts-history');
+      const logHistory = document.getElementById('history');
+      for (const history of raw) {
+         property.insertHistoryOption(history, logHistory);
+      }
+   }
+
+   function submitPost(data) {
+      const headMessage = document.getElementById("head-message");
+      const status = document.getElementById("status");
+      const r = new XMLHttpRequest();
       r.open("POST", "/", true);
       r.setRequestHeader("Content-Type", "application/json");
       r.onreadystatechange = () => {
@@ -30,18 +74,30 @@
             return;
          }
       };
-      r.send(JSON.stringify({ content: value, sex: sex, code: code, variant: variant }));
+      r.send(data);
    }
 
-   function submitWebsocket() {
-      let headMessage = document.getElementById("head-message");
-      let status = document.getElementById("status");
-      let value = document.getElementById("text").value;
-      let sex = document.getElementById("sex").value;
-      let code = document.getElementById("code").value;
-      let variant = document.getElementById("variant").value;
-      ws.sendMessage(JSON.stringify({ content: value, sex: sex, code: code, variant: variant }));
+   function submit(useWebsocket = true) {
+      const textarea = document.getElementById("text");
+      const value = textarea.value;
+      const sex = document.getElementById("sex").value;
+      const code = document.getElementById("code").value;
+      const variant = document.getElementById("variant").value;
+      const data = JSON.stringify({ content: value, sex: sex, code: code, variant: variant });
+      if (value.length === 0) {
+         appendLog('data is empty, skip send');
+         return;
+      }
+      if (useWebsocket) {
+         ws.sendMessage(data);
+      } else {
+         submitPost(data);
+      }
+
+      property.appendHistory(value);
+      textarea.value = '';
    }
+
 
    function clearText() {
       document.getElementById("text").value = "";
@@ -163,6 +219,11 @@
       appendLog('Log cleared');
    }
 
+   const clearHistory = () => {
+      localStorage.removeItem('tts-history');
+      document.getElementById('history').innerHTML = '';
+   }
+
    ws.onOpen = (_evt) => {
       console.info('[WS] Connected');
       appendLog("Websocket connected");
@@ -205,7 +266,7 @@
       websocket.send(message);
    }
 
-   ws.create_websocket_connect = function (url = REMOTE_ENDPOINT) {
+   ws.create_websocket_connect = (url = REMOTE_ENDPOINT) => {
       if (websocket !== null &&
          (websocket.readyState !== WebSocket.CLOSED ||
             websocket.readyState !== WebSocket.CLOSING)) {
@@ -231,8 +292,6 @@
       websocket = null;
    }
 
-   const property = () => { };
-
    property.isSteam = false;
 
    property.enableSteam = () => {
@@ -252,6 +311,7 @@
       }
    }
 
+
    document.addEventListener("DOMContentLoaded", function (event) {
       let textarea = document.getElementById("text");
       let s = window.localStorage.getItem("tts");
@@ -263,16 +323,14 @@
       // https://stackoverflow.com/questions/1684196/
       textarea.addEventListener('keydown', e => {
          if (e.ctrlKey && e.keyCode === 13) {
-            if (property.isSteam)
-               submit();
-            else
-               submitWebsocket();
+            submit(!property.isSteam);
          }
       })
 
       ws.showDisconnected();
       initOptions();
       ws.create_websocket_connect();
+      property.loadHistory();
 
       window.addEventListener("beforeunload", (_e) => {
          ws.disconnect();
@@ -285,9 +343,13 @@
       });
 
       window.addEventListener("focus", () => {
-         if (websocket === null) {
+         if (websocket === null && !property.isSteam) {
             ws.create_websocket_connect();
          }
+      });
+
+      document.getElementById("history").addEventListener("change", event => {
+         document.getElementById("text").value = event.target.value;
       });
    });
 </script>
@@ -301,11 +363,17 @@
    <br />
    <textarea id="text" rows="5" cols="60" name="content"></textarea>
    <br />
-   <button id="ws-submit" onclick="submitWebsocket()">submit</button>
-   <button onclick="submit()">submit(post)</button>
+   <button id="ws-submit" onclick="submit()">submit</button>
+   <button onclick="submit(false)">submit(post)</button>
    <button onclick="clearText()">clear</button>
    <button onclick="shownDebug()"
       style="background: transparent; border: none !important; font-size:0; width: 50px; height: 10px;">clear</button>
+   <br />
+   <br />
+   <div id="history-div">
+      History:<br />
+      <select id="history" size="10" style="width: 400px;"></select>
+   </div>
    <br />
    <br />
    <div id="log-area">
@@ -318,6 +386,7 @@
       <button onclick="ws.create_websocket_connect()">connect</button>
       <button onclick="ws.disconnect()">disconnect</button>
       <button onclick="clearLog()">clear logs</button>
+      <button onclick="clearHistory()">clear history</button>
    </div>
 </body>
 
