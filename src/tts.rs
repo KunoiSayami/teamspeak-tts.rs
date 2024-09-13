@@ -300,7 +300,7 @@ pub(crate) async fn send_audio(
                     }
                 }
                 sender.send(TeamSpeakEvent::Muted(true)).await.ok();
-                helper.message(format!("Send audio successful")).await;
+                helper.message("Send audio successful".to_string()).await;
             }
             TTSFinalEvent::Exit => break,
         }

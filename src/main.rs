@@ -68,7 +68,7 @@ fn main() -> Result<()> {
         ))
 }
 
-async fn async_main(path: &String, verbose: u8, log_command: bool) -> Result<()> {
+async fn async_main(path: &str, verbose: u8, log_command: bool) -> Result<()> {
     log::info!("Version: {}", env!("CARGO_PKG_VERSION"));
     let config = Config::load(path).await?;
 

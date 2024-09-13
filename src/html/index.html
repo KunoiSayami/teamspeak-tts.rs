@@ -37,7 +37,7 @@
       localStorage.setItem('tts-history', JSON.stringify(raw));
       property.insertHistoryOption(data, origin);
 
-      if (raw.length > 15) {
+      if (raw.length > 30) {
          raw.splice(0, 1);
          origin.removeChild(origin.lastChild);
       }
@@ -62,7 +62,25 @@
       }
    }
 
-   function submitPost(data) {
+   property.deleteHistory = () => {
+      const raw = decodeOrInit("tts-history");
+      const value = document.getElementById("text").value;
+      const logHistory = document.getElementById('history');
+      const index = raw.indexOf(value);
+      if (index !== -1) {
+         raw.splice(index, 1);
+         localStorage.setItem("tts-history", JSON.stringify(raw));
+      }
+
+      for (const child of logHistory.children) {
+         if (child.value === value) {
+            logHistory.removeChild(child);
+            return;
+         }
+      }
+   }
+
+   /* function submitPost(data) {
       const headMessage = document.getElementById("head-message");
       const status = document.getElementById("status");
       const r = new XMLHttpRequest();
@@ -81,7 +99,7 @@
          }
       };
       r.send(data);
-   }
+   } */
 
    function submit(useWebsocket = true) {
       const textarea = document.getElementById("text");
@@ -90,21 +108,24 @@
       const code = document.getElementById("code").value;
       const variant = document.getElementById("variant").value;
       const data = JSON.stringify({ content: value, sex: sex, code: code, variant: variant });
+
+      if (property.autoFocus)
+         textarea.focus();
+
       if (value.length === 0) {
-         appendLog('data is empty, skip send');
+         appendLog('Input is empty, skip send');
          return;
       }
       if (useWebsocket) {
          ws.sendMessage(data);
       } else {
-         submitPost(data);
+         //submitPost(data);
+         alert("Not implemented!");
       }
 
       property.appendHistory(value);
       if (property.needClear)
          textarea.value = '';
-      if (property.autoFocus)
-         textarea.focus();
    }
 
 
@@ -181,11 +202,11 @@
          saveVariant();
       });
       variant.addEventListener('change', saveVariant);
-      if (localStorage.getItem('isSteam') === 'true') {
+      /* if (localStorage.getItem('isSteam') === 'true') {
          property.isSteam = true;
          document.getElementById("is-steam").checked = true;
          property.init();
-      }
+      } */
    }
 
    const shownDebug = () => {
@@ -242,7 +263,7 @@
    }
 
    ws.onMessage = (evt) => {
-      console.log(evt);
+      //console.log(evt);
       appendLog(evt.data);
    }
 
@@ -321,7 +342,7 @@
 
    property.isSteam = false;
 
-   property.enableSteam = () => {
+   /* property.enableSteam = () => {
       for (const element of ["ws-submit", "ws-status", "log-area"])
          document.getElementById(element).style.display = "none";
    };
@@ -336,7 +357,7 @@
       } else {
          property.disableSteam();
       }
-   }
+   } */
 
 
    document.addEventListener("DOMContentLoaded", function (event) {
@@ -363,11 +384,11 @@
          ws.disconnect();
       });
 
-      document.getElementById("is-steam").addEventListener('change', event => {
+      /* document.getElementById("is-steam").addEventListener('change', event => {
          property.isSteam = event.target.checked;
          localStorage.setItem('isSteam', property.isSteam.toString());
          property.init();
-      });
+      }); */
       document.getElementById("need-clear").addEventListener('change', event => {
          property.needClear = event.target.checked;
       });
@@ -383,23 +404,27 @@
 
       document.getElementById("history").addEventListener("change", event => {
          document.getElementById("text").value = event.target.value;
+         document.getElementById("history").value = -1;
       });
       ws.firstConnect();
    });
 </script>
 
 <body>
-   <label for="is-steam">steam</label><input id="is-steam" type="checkbox" />
+   <!-- <label for="is-steam">steam</label><input id="is-steam" type="checkbox" /> -->
    <span id="ws-status"></span>
-   <span id="head-message" style="display: none;">Send success</span>&nbsp;<span id="status"></span>
+   <!-- <span id="head-message" style="display: none;">Send success</span>&nbsp;<span id="status"></span> -->
    <br />
    <select id="sex"></select><select id="code"></select><select id="variant"></select>
    <br />
    <textarea id="text" rows="5" cols="60" name="content"></textarea>
    <br />
    <button id="ws-submit" onclick="submit()">submit</button>
-   <button onclick="submit(false)">submit(post)</button>
+   <!--<button onclick="submit(false)">submit(post)</button>-->
    <button onclick="clearText()">clear</button>
+   <button onclick="property.deleteHistory()">delete history</button>
+   <br />
+   Options:&nbsp;
    <label for="need-clear">clear after send</label><input id="need-clear" checked type="checkbox" />
    <label for="auto-focus">auto focus</label><input id="auto-focus" checked type="checkbox" />
    <button onclick="shownDebug()"

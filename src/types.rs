@@ -4,7 +4,7 @@ pub(crate) enum MainEvent {
 }
 
 impl MainEvent {
-    pub fn is_not_exit(self) -> bool {
-        self != Self::Exit
+    pub fn is_not_exit(&self) -> bool {
+        self != &Self::Exit
     }
 }

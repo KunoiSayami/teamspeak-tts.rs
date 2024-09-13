@@ -42,7 +42,7 @@ impl<T> ArrayOrSingle<T> {
         Ok(())
     }
 
-    pub fn to_vec(self) -> Vec<T> {
+    pub fn into_vec(self) -> Vec<T> {
         match self {
             Self::Single(v) => vec![v],
             Self::Multiple(v) => v,
@@ -111,7 +111,7 @@ impl TeamSpeak {
     }
 
     pub fn follow(&self) -> Option<ClientDbId> {
-        self.follow.map(|s| ClientDbId(s))
+        self.follow.map(ClientDbId)
     }
 }
 
@@ -128,7 +128,7 @@ impl<'de> Deserialize<'de> for KeyStore {
         let inner: ArrayOrSingle<String> = ArrayOrSingle::deserialize(deserializer)?;
         inner.validate().map_err(serde::de::Error::custom)?;
         Ok(Self {
-            inner: Arc::new(RwLock::new(inner.to_vec())),
+            inner: Arc::new(RwLock::new(inner.into_vec())),
         })
     }
 }
@@ -156,6 +156,7 @@ impl KeyStore {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, Deserialize)]
 pub struct TTS {
     endpoint: String,

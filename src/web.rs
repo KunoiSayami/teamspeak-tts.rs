@@ -8,7 +8,7 @@ use axum::{
     },
     response::{Html, IntoResponse},
     routing::get,
-    Extension, Json,
+    Extension,
 };
 use futures::{SinkExt, StreamExt};
 use kstool_helper_generator::Helper;
@@ -130,7 +130,10 @@ pub async fn route(
     let client = Requester::new(config.tts().clone());
 
     let router = axum::Router::new()
-        .route("/", axum::routing::get(load_homepage).post(post_handler))
+        .route(
+            "/",
+            axum::routing::get(load_homepage), /* .post(post_handler) */
+        )
         .route("/ws", axum::routing::get(ws_upgrade))
         .route(
             "/mstts.js",
@@ -162,7 +165,11 @@ pub async fn route(
         router.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(async move {
-        while broadcast.recv().await.is_ok_and(MainEvent::is_not_exit) {}
+        while broadcast
+            .recv()
+            .await
+            .is_ok_and(|e| MainEvent::is_not_exit(&e))
+        {}
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
     })
     .await?;
@@ -273,9 +280,9 @@ async fn handle_request(
     Ok(code)
 }
 
-async fn post_handler(
+/* async fn post_handler(
     Extension(extension): Extension<Arc<WebExtension>>,
-    Json(data): Json<Data>,
+    axum::Json(data): axum::Json<Data>,
 ) -> Result<String, String> {
     let hash = data.hash();
     let code = match extension.leveldb_helper.get(hash).await {
@@ -313,3 +320,4 @@ async fn post_handler(
     //log::debug!("Data length: {}", data.len());
     Ok(code)
 }
+ */
