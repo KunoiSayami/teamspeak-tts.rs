@@ -72,10 +72,10 @@ async fn async_main(path: &str, verbose: u8, log_command: bool) -> Result<()> {
     log::info!("Version: {}", env!("CARGO_PKG_VERSION"));
     let config = Config::load(path).await?;
 
-    let (teamspeak_sender, teamspeak_recv) = mpsc::channel(16);
-    let (audio_sender, audio_receiver) = mpsc::channel(32);
-    let (middle_sender, middle_receiver) = mpsc::channel(32);
-    let (global_sender, global_receiver) = broadcast::channel(16);
+    let (teamspeak_sender, teamspeak_recv) = mpsc::channel(32);
+    let (audio_sender, audio_receiver) = mpsc::channel(16);
+    let (middle_sender, middle_receiver) = mpsc::channel(16);
+    let (global_sender, global_receiver) = broadcast::channel(2);
 
     let (cache_handler, leveldb_helper) = cache::LevelDB::connect(config.leveldb().to_string());
 

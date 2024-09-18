@@ -274,6 +274,12 @@ pub(crate) async fn send_audio(
                 #[cfg(feature = "measure-time")]
                 let mut start = tokio::time::Instant::now();
                 while let Ok(packet) = reader.next_packet() {
+                    #[cfg(feature = "spin-sleep")]
+                    tokio::task::spawn_blocking(|| spin_sleep::sleep(Duration::from_millis(20)))
+                        .await?;
+                    #[cfg(not(feature = "spin-sleep"))]
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+
                     sender
                         .send(TeamSpeakEvent::Data(OutAudio::new(&AudioData::C2S {
                             id: 0,
@@ -288,11 +294,6 @@ pub(crate) async fn send_audio(
                         "{:?} elapsed to build audio slice",
                         tokio::time::Instant::now() - start
                     );
-                    #[cfg(feature = "spin-sleep")]
-                    tokio::task::spawn_blocking(|| spin_sleep::sleep(Duration::from_millis(20)))
-                        .await?;
-                    #[cfg(not(feature = "spin-sleep"))]
-                    tokio::time::sleep(Duration::from_millis(20)).await;
 
                     #[cfg(feature = "measure-time")]
                     {

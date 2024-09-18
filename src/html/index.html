@@ -103,7 +103,8 @@
 
    function submit(useWebsocket = true) {
       const textarea = document.getElementById("text");
-      const value = textarea.value;
+      // Need test steam browser
+      const value = textarea.value.trim().replaceAll(/\s+/g, ' ');
       const sex = document.getElementById("sex").value;
       const code = document.getElementById("code").value;
       const variant = document.getElementById("variant").value;

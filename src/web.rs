@@ -144,12 +144,6 @@ pub async fn route(
                 )
             }),
         )
-        /* .route(
-            "/test",
-            axum::routing::post(|Json(data): Json<Data>| async move {
-                log::debug!("Post data: {data:?}")
-            }),
-        ) */
         .layer(Extension(Arc::new(WebExtension::new(
             tts_event_sender,
             client,
