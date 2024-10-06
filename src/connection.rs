@@ -37,7 +37,6 @@ fn find_self_and_target(
 
     let interest_db_id = interest.unwrap();
 
-    //let target_client = None;
     let current_user = state.own_client;
 
     // Get current channel, if none, throw it
@@ -53,6 +52,7 @@ fn find_self_and_target(
         }
         return Some((client.id, channel, make_out_message(current_user, channel)));
     }
+
     // Not found
     for (client_id, client) in state.clients.iter() {
         // Check database id equal
@@ -116,17 +116,19 @@ impl ConnectionHandler {
         verbose: u8,
         log_command: bool,
         receiver: mpsc::Receiver<TeamSpeakEvent>,
+        override_server: Option<String>,
     ) -> anyhow::Result<(Self, oneshot::Receiver<()>)> {
-        let teamspeak_options = Connection::build(config.teamspeak().server())
-            .log_commands(verbose >= 5 || log_command)
-            .log_packets(verbose >= 6)
-            .log_udp_packets(verbose >= 7)
-            .channel_id(tsclientlib::ChannelId(config.teamspeak().channel()))
-            .version(tsclientlib::Version::Linux_3_5_7__3)
-            .name(config.teamspeak().nickname().to_string())
-            .output_muted(true)
-            .output_hardware_enabled(false)
-            .identity(Identity::new_from_str(config.teamspeak().identity())?);
+        let teamspeak_options =
+            Connection::build(override_server.unwrap_or_else(|| config.teamspeak().server()))
+                .log_commands(verbose >= 5 || log_command)
+                .log_packets(verbose >= 6)
+                .log_udp_packets(verbose >= 7)
+                .channel_id(tsclientlib::ChannelId(config.teamspeak().channel()))
+                .version(tsclientlib::Version::Linux_3_5_7__3)
+                .name(config.teamspeak().nickname().to_string())
+                .output_muted(true)
+                .output_hardware_enabled(false)
+                .identity(Identity::new_from_str(config.teamspeak().identity())?);
         let handle = tokio::spawn(Self::run(
             teamspeak_options.connect()?,
             config.teamspeak().follow(),
@@ -262,7 +264,7 @@ impl ConnectionHandler {
             // Disconnect
             conn.disconnect(
                 DisconnectOptions::new()
-                    .message("API Requested.")
+                    .message("User requested.")
                     .reason(tsclientlib::Reason::None),
             )?;
         }

@@ -8,3 +8,20 @@ impl MainEvent {
         self != &Self::Exit
     }
 }
+
+#[derive(Clone)]
+pub(crate) struct AdditionalArguments {
+    pub(crate) server: Option<String>,
+    pub(crate) web: Option<String>,
+    pub(crate) leveldb: Option<String>,
+}
+
+impl AdditionalArguments {
+    pub(crate) fn new(matches: &clap::ArgMatches) -> Self {
+        Self {
+            server: matches.get_one("server").cloned(),
+            web: matches.get_one("web").cloned(),
+            leveldb: matches.get_one("leveldb").cloned(),
+        }
+    }
+}

@@ -1,6 +1,6 @@
 [package]
 name = "teamspeak-tts"
-version = "3.2.2"
+version = "4.0.0"
 homepage = "https://github.com/KunoiSayami/teamspeak-tts.rs"
 edition = "2021"
 
@@ -35,7 +35,7 @@ toml = "0.8"
 tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib", default-features = false }
 tsproto = { git = "https://github.com/ReSpeak/tsclientlib" }
 tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib" }
-xxhash-rust = { version = "0.8.12", features = ["xxh3"] }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [features]
 default = ["full"]

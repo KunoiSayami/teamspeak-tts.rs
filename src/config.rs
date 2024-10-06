@@ -98,8 +98,8 @@ impl TeamSpeak {
         &self.identity
     }
 
-    pub fn server(&self) -> &str {
-        &self.server
+    pub fn server(&self) -> String {
+        self.server.clone()
     }
 
     pub fn nickname(&self) -> &str {

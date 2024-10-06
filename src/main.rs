@@ -6,7 +6,7 @@ use connection::ConnectionHandler;
 use tokio::sync::{broadcast, mpsc};
 
 use tts::MiddlewareTask;
-use types::MainEvent;
+use types::{AdditionalArguments, MainEvent};
 use web::route;
 
 pub mod cache;
@@ -50,8 +50,11 @@ fn main() -> Result<()> {
     let matches = clap::command!()
         .args(&[
             clap::arg!([CONFIG] "Configure file").default_value("config.toml"),
-            clap::arg!(-v --verbose ... "Add log level"),
+            clap::arg!(-v --verbose ... "Increase log level"),
             clap::arg!(--"log-commands" "Enable log for commands"),
+            clap::arg!(--server <SERVER> "Override teamspeak server"),
+            clap::arg!(--web <BIND_ADDRESS> "Override web server bind address"),
+            clap::arg!(--leveldb <LEVELDB_FOLDER> "Override leveldb location"),
         ])
         .get_matches();
 
@@ -65,10 +68,16 @@ fn main() -> Result<()> {
             matches.get_one::<String>("CONFIG").unwrap(),
             matches.get_count("verbose"),
             matches.get_flag("log-commands"),
+            AdditionalArguments::new(&matches),
         ))
 }
 
-async fn async_main(path: &str, verbose: u8, log_command: bool) -> Result<()> {
+async fn async_main(
+    path: &str,
+    verbose: u8,
+    log_command: bool,
+    args: AdditionalArguments,
+) -> Result<()> {
     log::info!("Version: {}", env!("CARGO_PKG_VERSION"));
     let config = Config::load(path).await?;
 
@@ -77,7 +86,8 @@ async fn async_main(path: &str, verbose: u8, log_command: bool) -> Result<()> {
     let (middle_sender, middle_receiver) = mpsc::channel(16);
     let (global_sender, global_receiver) = broadcast::channel(2);
 
-    let (cache_handler, leveldb_helper) = cache::LevelDB::connect(config.leveldb().to_string());
+    let (cache_handler, leveldb_helper) =
+        cache::LevelDB::connect(args.leveldb.unwrap_or_else(|| config.leveldb().to_string()));
 
     let middle_handler = MiddlewareTask::new(
         middle_receiver,
@@ -91,10 +101,11 @@ async fn async_main(path: &str, verbose: u8, log_command: bool) -> Result<()> {
         leveldb_helper,
         middle_sender.clone(),
         global_receiver.resubscribe(),
+        args.web,
     ));
 
     let (ts_conn, early_exit_receiver) =
-        ConnectionHandler::start(config, verbose, log_command, teamspeak_recv)?;
+        ConnectionHandler::start(config, verbose, log_command, teamspeak_recv, args.server)?;
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {}

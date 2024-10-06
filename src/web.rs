@@ -126,6 +126,7 @@ pub async fn route(
     leveldb_helper: ConnAgent,
     tts_event_sender: mpsc::Sender<TTSEvent>,
     mut broadcast: broadcast::Receiver<MainEvent>,
+    override_bind: Option<String>,
 ) -> anyhow::Result<()> {
     let client = Requester::new(config.tts().clone());
 
@@ -150,9 +151,10 @@ pub async fn route(
             leveldb_helper,
         ))));
 
-    let listener = tokio::net::TcpListener::bind(config.web().bind())
-        .await
-        .tap_err(|e| log::error!("Web server bind error: {e:?}"))?;
+    let listener =
+        tokio::net::TcpListener::bind(override_bind.unwrap_or_else(|| config.web().bind()))
+            .await
+            .tap_err(|e| log::error!("Web server bind error: {e:?}"))?;
 
     axum::serve(
         listener,
