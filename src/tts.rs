@@ -360,7 +360,7 @@ impl Requester {
         text: &str,
     ) -> anyhow::Result<Response> {
         let ssml = Self::build_ssml(lang, gender, name, text);
-        log::trace!("Request ssml: {ssml:?}");
+        log::trace!("Request SSML: {ssml:?}");
         let ret = loop {
             let selected = self.tts.ocp_apim_subscription_key().await?;
             let ret = self

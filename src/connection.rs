@@ -8,12 +8,29 @@ use tokio::{
 };
 use tsclientlib::{
     prelude::OutMessageTrait, ChannelId, ClientDbId, ClientId, Connection, DisconnectOptions,
-    OutCommandExt, StreamItem,
+    Invoker, OutCommandExt, StreamItem,
 };
 use tsproto::Identity;
 use tsproto_packets::packets::OutCommand;
 
 use crate::{config::Config, tts::TeamSpeakEvent};
+
+#[derive(Clone, Copy)]
+pub enum KickEvent {
+    Reset,
+    Server,
+    Channel,
+}
+
+fn make_out_message(client_id: ClientId, channel_id: ChannelId) -> OutCommand {
+    tsclientlib::messages::c2s::OutClientMoveMessage::new(&mut std::iter::once(
+        tsclientlib::messages::c2s::OutClientMovePart {
+            client_id,
+            channel_id,
+            channel_password: None,
+        },
+    ))
+}
 
 fn find_self_and_target(
     current_channel: Option<ChannelId>,
@@ -21,16 +38,6 @@ fn find_self_and_target(
     target_id: Option<ClientId>,
     interest: Option<ClientDbId>,
 ) -> Option<(ClientId, ChannelId, OutCommand)> {
-    fn make_out_message(client_id: ClientId, channel_id: ChannelId) -> OutCommand {
-        tsclientlib::messages::c2s::OutClientMoveMessage::new(&mut std::iter::once(
-            tsclientlib::messages::c2s::OutClientMovePart {
-                client_id,
-                channel_id,
-                channel_password: None,
-            },
-        ))
-    }
-
     if interest.is_none() || state.clients.is_empty() {
         return None;
     }
@@ -74,7 +81,27 @@ fn find_self_and_target(
     None
 }
 
-fn check_is_kick_event(client_id: ClientId, events: &[tsclientlib::events::Event]) -> bool {
+fn get_invoker(invoker: &Option<Invoker>) -> String {
+    if let Some(invoker) = invoker {
+        format!(
+            "{}({})",
+            invoker.name,
+            invoker
+                .uid
+                .as_ref()
+                .map(|s| base64::display::Base64Display::new(
+                    &s.0,
+                    &base64::engine::general_purpose::STANDARD
+                )
+                .to_string())
+                .unwrap_or_else(|| "N/A".to_string())
+        )
+    } else {
+        "Unknown(N/A)".into()
+    }
+}
+
+fn check_is_kick_event(client_id: ClientId, events: &[tsclientlib::events::Event]) -> KickEvent {
     for event in events {
         if let tsclientlib::events::Event::PropertyRemoved {
             id: tsclientlib::events::PropertyId::Client(id),
@@ -84,26 +111,28 @@ fn check_is_kick_event(client_id: ClientId, events: &[tsclientlib::events::Event
         } = event
         {
             if id == &client_id {
-                if let Some(invoker) = invoker {
-                    log::error!(
-                        "Kicked by {}({})",
-                        invoker.name,
-                        invoker
-                            .uid
-                            .as_ref()
-                            .map(|s| base64::display::Base64Display::new(
-                                &s.0,
-                                &base64::engine::general_purpose::STANDARD
-                            )
-                            .to_string())
-                            .unwrap_or_else(|| "N/A".to_string())
-                    )
-                }
-                return true;
+                log::error!("Kicked by {}", get_invoker(invoker));
+                return KickEvent::Server;
+            }
+            return KickEvent::Reset;
+        }
+        if let tsclientlib::events::Event::PropertyChanged {
+            id: tsclientlib::events::PropertyId::ClientChannel(id),
+            old: _,
+            invoker,
+            extra: _,
+        } = event
+        {
+            if invoker.is_none() {
+                return KickEvent::Reset;
+            }
+            if id == &client_id {
+                log::warn!("Kicked from channel by {}", get_invoker(invoker));
+                return KickEvent::Channel;
             }
         }
     }
-    false
+    KickEvent::Reset
 }
 
 pub struct ConnectionHandler {
@@ -124,7 +153,17 @@ impl ConnectionHandler {
                 .log_packets(verbose >= 6)
                 .log_udp_packets(verbose >= 7)
                 .channel_id(tsclientlib::ChannelId(config.teamspeak().channel()))
-                .version(tsclientlib::Version::Linux_3_5_7__3)
+                .version(if cfg!(windows) {
+                    tsclientlib::Version::Windows_3_6_0__14
+                } else if cfg!(target_os = "macos") {
+                    tsclientlib::Version::macOS_3_6_0__4
+                } else if cfg!(target_os = "android") {
+                    tsclientlib::Version::Android_3_5_0__7
+                } else if cfg!(target_os = "ios") {
+                    tsclientlib::Version::iOS_3_6_0
+                } else {
+                    tsclientlib::Version::Linux_3_6_0__5
+                })
                 .name(config.teamspeak().nickname().to_string())
                 .output_muted(true)
                 .output_hardware_enabled(false)
@@ -176,7 +215,7 @@ impl ConnectionHandler {
         let client_id = conn.get_state().unwrap().own_client;
 
         let notifier = Arc::new(Notify::new());
-        let (exit_notifier, mut exit_receiver) = mpsc::channel(1);
+        let (exit_notifier, mut exit_receiver) = mpsc::channel(4);
 
         let mut refresh = true;
 
@@ -185,9 +224,22 @@ impl ConnectionHandler {
         let mut kicked = false;
 
         loop {
-            if exit_receiver.try_recv().is_ok() {
-                kicked = true;
-                break;
+            if let Ok(event) = exit_receiver.try_recv() {
+                match event {
+                    KickEvent::Reset => unreachable!(),
+                    KickEvent::Server => {
+                        kicked = true;
+                        break;
+                    }
+                    KickEvent::Channel => {
+                        if let Some(channel_id) = current_channel {
+                            log::debug!("Trying rejoin channel: {channel_id}");
+                            make_out_message(client_id, channel_id)
+                                .send(&mut conn)
+                                .unwrap();
+                        }
+                    }
+                }
             }
             if refresh && tail_target.is_some() {
                 if let Some((client_id, channel_id, command)) = find_self_and_target(
@@ -212,9 +264,13 @@ impl ConnectionHandler {
                 async move {
                     match event {
                         StreamItem::BookEvents(event) => {
-                            if check_is_kick_event(client_id, &event) {
-                                exit_notifier.send(()).await.ok();
-                                return Ok(());
+                            let event = check_is_kick_event(client_id, &event);
+                            match event {
+                                KickEvent::Reset => {}
+                                _ => {
+                                    exit_notifier.send(event).await.ok();
+                                    return Ok(());
+                                }
                             }
                             notify.notify_waiters();
                         }
