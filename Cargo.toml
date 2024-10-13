@@ -1,6 +1,6 @@
 [package]
 name = "teamspeak-tts"
-version = "4.1.0"
+version = "4.1.1"
 homepage = "https://github.com/KunoiSayami/teamspeak-tts.rs"
 edition = "2021"
 

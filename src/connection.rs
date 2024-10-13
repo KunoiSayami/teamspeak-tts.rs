@@ -216,6 +216,7 @@ impl ConnectionHandler {
 
         let notifier = Arc::new(Notify::new());
         let (exit_notifier, mut exit_receiver) = mpsc::channel(4);
+        let mut measure_timer = tokio::time::interval(std::time::Duration::from_secs(60));
 
         let mut refresh = true;
 
@@ -232,12 +233,8 @@ impl ConnectionHandler {
                         break;
                     }
                     KickEvent::Channel => {
-                        if let Some(channel_id) = current_channel {
-                            log::debug!("Trying rejoin channel: {channel_id}");
-                            make_out_message(client_id, channel_id)
-                                .send(&mut conn)
-                                .unwrap();
-                        }
+                        current_channel.take();
+                        refresh = true;
                     }
                 }
             }
@@ -301,14 +298,17 @@ impl ConnectionHandler {
                     }
                     #[cfg(feature = "measure-time")]
                     {
-                        let current = tokio::time::Instant::now();
-                        log::trace!("{:?} elapsed to send audio", current - start);
-                        start = current;
+                        log::trace!("{:?} elapsed to send audio", start.elapsed());
+                        start = tokio::time::Instant::now();
                     }
                 }
                 _ =  async move {
                     notify_waiter.notified().await;
                 }, if tail_target.is_some() => {
+                    refresh = true;
+                }
+                _ = measure_timer.tick() => {
+                    current_channel.take();
                     refresh = true;
                 }
                 ret = events => {
