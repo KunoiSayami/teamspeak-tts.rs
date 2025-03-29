@@ -140,7 +140,7 @@ impl KeyStore {
             return Err(anyhow!("KeyStore is empty"));
         }
         Ok(
-            rand::seq::SliceRandom::choose(&delegate[..], &mut rand::thread_rng())
+            rand::seq::IndexedRandom::choose(&delegate[..], &mut rand::rng())
                 .unwrap()
                 .tap(|s| log::trace!("Select key: {s:?}"))
                 .to_string(),

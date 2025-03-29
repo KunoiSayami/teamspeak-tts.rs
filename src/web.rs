@@ -13,7 +13,6 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use kstool_helper_generator::Helper;
 use serde::Deserialize;
-use tap::TapFallible;
 use tokio::sync::{broadcast, mpsc};
 use xxhash_rust::xxh3;
 
@@ -207,7 +206,7 @@ async fn ws_handler(socket: WebSocket, extension: Arc<WebExtension>) -> anyhow::
                             sender.send(Message::Text(
                                 handle_request(data, &extension, outer_sender.clone().into())
                                     .await
-                                    .unwrap_or_else(|e| e.to_string())
+                                    .unwrap_or_else(|e| e.to_string()).into()
                                     //.tap(|s| log::debug!("{s:?}"))
                                 )).await.inspect_err(|e| log::error!("{e:?}")).ok();
                         },
@@ -220,7 +219,7 @@ async fn ws_handler(socket: WebSocket, extension: Arc<WebExtension>) -> anyhow::
             Some(event) = inner_receiver.recv() => {
                 match event {
                     WebsocketEvent::Message(msg) => {
-                        sender.send(Message::Text(msg)).await?;
+                        sender.send(Message::Text(msg.into())).await?;
                     },
                 }
             }

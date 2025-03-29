@@ -113,9 +113,10 @@ fn check_is_kick_event(client_id: ClientId, events: &[tsclientlib::events::Event
         {
             if id == &client_id {
                 if invoker.is_none() {
-                    //log::debug!("Return server force disconnected");
+                    log::error!("Server force disconnected");
                     return KickEvent::ServerForceDisconnect;
                 }
+                log::error!("Kicked by {}", get_invoker(invoker));
                 return KickEvent::Server;
             }
             return KickEvent::Reset;
@@ -298,13 +299,15 @@ impl ConnectionHandler {
             tokio::select! {
                 send_audio = receiver.recv() => {
                     if let Some(packet) = send_audio {
-                        match packet {
-                            TeamSpeakEvent::Muted(_) => {
-                                packet.to_packet().send(&mut conn)?;
+                        match Self::handle_packet(packet, &mut conn).await {
+                            Ok(ret) => if ret {
+                                break
                             },
-                            TeamSpeakEvent::Data(packet) => conn.send_audio(packet)?,
-                            TeamSpeakEvent::Exit => {
-                                break;
+                            Err(e) => {
+                                if matches!(e, tsclientlib::Error::NotConnected) {
+                                    continue
+                                }
+                                return Err(e.into());
                             }
                         }
                     } else {
@@ -341,6 +344,20 @@ impl ConnectionHandler {
         }
         conn.events().for_each(|_| future::ready(())).await;
         Ok(())
+    }
+
+    async fn handle_packet(
+        packet: TeamSpeakEvent,
+        conn: &mut Connection,
+    ) -> Result<bool, tsclientlib::Error> {
+        match packet {
+            TeamSpeakEvent::Muted(_) => {
+                packet.to_packet().send(conn)?;
+            }
+            TeamSpeakEvent::Data(packet) => conn.send_audio(packet)?,
+            TeamSpeakEvent::Exit => return Ok(true),
+        }
+        Ok(false)
     }
 
     pub async fn join(self) -> anyhow::Result<()> {

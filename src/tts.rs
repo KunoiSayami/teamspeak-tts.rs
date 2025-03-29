@@ -13,7 +13,7 @@ use symphonia::core::{
     formats::FormatReader,
     io::{MediaSource, MediaSourceStream},
 };
-use tap::{Tap, TapFallible};
+use tap::Tap;
 use tokio::{sync::mpsc, task::LocalSet};
 use tsclientlib::prelude::OutMessageTrait;
 use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
