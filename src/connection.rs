@@ -19,6 +19,7 @@ use crate::{config::Config, tts::TeamSpeakEvent};
 pub enum KickEvent {
     Reset,
     Server,
+    ServerForceDisconnect,
     Channel,
 }
 
@@ -111,7 +112,10 @@ fn check_is_kick_event(client_id: ClientId, events: &[tsclientlib::events::Event
         } = event
         {
             if id == &client_id {
-                log::error!("Kicked by {}", get_invoker(invoker));
+                if invoker.is_none() {
+                    //log::debug!("Return server force disconnected");
+                    return KickEvent::ServerForceDisconnect;
+                }
                 return KickEvent::Server;
             }
             return KickEvent::Reset;
@@ -228,6 +232,10 @@ impl ConnectionHandler {
             if let Ok(event) = exit_receiver.try_recv() {
                 match event {
                     KickEvent::Reset => unreachable!(),
+                    KickEvent::ServerForceDisconnect => {
+                        //kicked = KickEvent::ServerForceDisconnect;
+                        // Client will auto reconnect, skip break loop
+                    }
                     KickEvent::Server => {
                         kicked = true;
                         break;
@@ -238,13 +246,20 @@ impl ConnectionHandler {
                     }
                 }
             }
+
             if refresh && tail_target.is_some() {
-                if let Some((client_id, channel_id, command)) = find_self_and_target(
-                    current_channel,
-                    conn.get_state().unwrap(),
-                    tail_target_client,
-                    tail_target,
-                ) {
+                let state = match conn.get_state() {
+                    Ok(state) => state,
+                    Err(e) => {
+                        log::warn!("Get state error: {e:?}");
+                        refresh = false;
+                        continue;
+                    }
+                };
+
+                if let Some((client_id, channel_id, command)) =
+                    find_self_and_target(current_channel, state, tail_target_client, tail_target)
+                {
                     if !tail_target_client.replace(client_id).eq(&Some(client_id)) {
                         log::info!("Following client {client_id}");
                     }

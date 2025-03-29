@@ -204,7 +204,7 @@ async fn delay_send(
     leveldb_helper
         .set(original_hash, raw)
         .await
-        .tap_err(|e| log::error!("Unable write cache: {e:?}"))?
+        .inspect_err(|e| log::error!("Unable write cache: {e:?}"))?
         .tap(|s| {
             if s.is_some() {
                 log::trace!("Write {original_hash} to cache");
@@ -287,8 +287,9 @@ pub(crate) async fn send_audio(
                             data: &packet.data,
                         })))
                         .await
-                        .tap_err(|_| log::error!("Send error"))
+                        .inspect_err(|_| log::error!("Send error"))
                         .ok();
+
                     #[cfg(feature = "measure-time")]
                     log::debug!(
                         "{:?} elapsed to build audio slice",

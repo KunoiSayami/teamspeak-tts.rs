@@ -154,7 +154,7 @@ pub async fn route(
     let listener =
         tokio::net::TcpListener::bind(override_bind.unwrap_or_else(|| config.web().bind()))
             .await
-            .tap_err(|e| log::error!("Web server bind error: {e:?}"))?;
+            .inspect_err(|e| log::error!("Web server bind error: {e:?}"))?;
 
     axum::serve(
         listener,
@@ -182,7 +182,7 @@ async fn ws_upgrade(
         async {
             ws_handler(socket, extension)
                 .await
-                .tap_err(|e| log::error!("Websocket error: {e:?}"))
+                .inspect_err(|e| log::error!("Websocket error: {e:?}"))
                 .ok();
         }
     })
@@ -209,7 +209,7 @@ async fn ws_handler(socket: WebSocket, extension: Arc<WebExtension>) -> anyhow::
                                     .await
                                     .unwrap_or_else(|e| e.to_string())
                                     //.tap(|s| log::debug!("{s:?}"))
-                                )).await.tap_err(|e| log::error!("{e:?}")).ok();
+                                )).await.inspect_err(|e| log::error!("{e:?}")).ok();
                         },
                         Err(e) => log::warn!("{e:?}"),
                     }
@@ -268,7 +268,7 @@ async fn handle_request(
                     sender,
                 ))
                 .await
-                .tap_err(|_| log::error!("Fail to send response"))
+                .inspect_err(|_| log::error!("Fail to send response"))
                 .ok();
             code.to_string()
         }
@@ -307,7 +307,7 @@ async fn handle_request(
                     None.into(),
                 ))
                 .await
-                .tap_err(|_| log::error!("Fail to send response"))
+                .inspect_err(|_| log::error!("Fail to send response"))
                 .ok();
             code.to_string()
         }

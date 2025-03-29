@@ -114,7 +114,7 @@ async fn async_main(
         }
     }
 
-    teamspeak_sender.send(tts::TeamSpeakEvent::Exit).await.ok();
+    teamspeak_sender.try_send(tts::TeamSpeakEvent::Exit).ok();
     global_sender.send(MainEvent::Exit).ok();
     middle_sender.send(tts::TTSEvent::Exit).await.ok();
     audio_sender.send(tts::TTSFinalEvent::Exit).await.ok();
