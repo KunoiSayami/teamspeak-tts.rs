@@ -228,6 +228,7 @@ impl ConnectionHandler {
         #[cfg(feature = "measure-time")]
         let mut start = tokio::time::Instant::now();
         let mut kicked = false;
+        let mut is_muted = true;
 
         loop {
             if let Ok(event) = exit_receiver.try_recv() {
@@ -299,7 +300,7 @@ impl ConnectionHandler {
             tokio::select! {
                 send_audio = receiver.recv() => {
                     if let Some(packet) = send_audio {
-                        match Self::handle_packet(packet, &mut conn).await {
+                        match Self::handle_packet(packet, &mut conn, &mut is_muted).await {
                             Ok(ret) => if ret {
                                 break
                             },
@@ -349,12 +350,21 @@ impl ConnectionHandler {
     async fn handle_packet(
         packet: TeamSpeakEvent,
         conn: &mut Connection,
+        is_muted: &mut bool,
     ) -> Result<bool, tsclientlib::Error> {
         match packet {
-            TeamSpeakEvent::Muted(_) => {
+            TeamSpeakEvent::Muted(muted) => {
                 packet.to_packet().send(conn)?;
+                *is_muted = muted;
             }
-            TeamSpeakEvent::Data(packet) => conn.send_audio(packet)?,
+            TeamSpeakEvent::Data(packet) => {
+                if *is_muted {
+                    TeamSpeakEvent::Muted(false).to_packet().send(conn)?;
+                    *is_muted = false;
+                    log::warn!("Force un-mute client");
+                }
+                conn.send_audio(packet)?;
+            }
             TeamSpeakEvent::Exit => return Ok(true),
         }
         Ok(false)
