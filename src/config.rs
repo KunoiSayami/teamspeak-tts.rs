@@ -91,6 +91,8 @@ pub struct TeamSpeak {
     #[serde(default)]
     channel: u64,
     follow: Option<u64>,
+    #[serde(default)]
+    password: String,
 }
 
 impl TeamSpeak {
@@ -112,6 +114,10 @@ impl TeamSpeak {
 
     pub fn follow(&self) -> Option<ClientDbId> {
         self.follow.map(ClientDbId)
+    }
+
+    pub fn password(&self) -> &str {
+        &self.password
     }
 }
 

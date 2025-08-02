@@ -2,6 +2,7 @@ leveldb = "tts.db"
 [teamspeak]
 key = ""
 server = ""
+#password = ""
 channel = 0
 #follow = 0
 

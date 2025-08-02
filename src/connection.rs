@@ -158,6 +158,7 @@ impl ConnectionHandler {
                 .log_packets(verbose >= 6)
                 .log_udp_packets(verbose >= 7)
                 .channel_id(tsclientlib::ChannelId(config.teamspeak().channel()))
+                .password(config.teamspeak().password().to_owned())
                 .version(if cfg!(windows) {
                     tsclientlib::Version::Windows_3_6_0__14
                 } else if cfg!(target_os = "macos") {

@@ -24,7 +24,7 @@ kstool_helper_generator::oneshot_helper! {
     pub enum DatabaseEvent {
         #[ret(Result<()>)]
         Set(KeyType, Vec<u8>),
-        #[ret(Option<Vec<u8>>)]
+        #[ret(Option<bytes::Bytes>)]
         Get(
             KeyType,
         ),
@@ -133,7 +133,7 @@ impl ConnAgent {
         Ok(())
     }
 
-    pub async fn get(&self, key: KeyType) -> Option<Vec<u8>> {
+    pub async fn get(&self, key: KeyType) -> Option<bytes::Bytes> {
         let ret = self.0.get(key).await.flatten()?;
         if ret.is_empty() {
             return None;
@@ -150,7 +150,7 @@ mod test {
     async fn async_test_leveldb(agent: ConnAgent) -> anyhow::Result<()> {
         let conn = agent.clone();
         conn.set(114514, "value".as_bytes().to_vec()).await?;
-        assert_eq!(conn.get(114514).await, Some("value".as_bytes().to_vec()));
+        assert_eq!(conn.get(114514).await, Some("value".as_bytes().into()));
         conn.set(114514, "value".as_bytes().to_vec()).await?;
         conn.delete(114514).await?;
         assert_eq!(conn.get(114514).await, None);

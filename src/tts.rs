@@ -13,7 +13,6 @@ use symphonia::core::{
     formats::FormatReader,
     io::{MediaSource, MediaSourceStream},
 };
-use tap::Tap;
 use tokio::{sync::mpsc, task::LocalSet};
 use tsclientlib::prelude::OutMessageTrait;
 use tsproto_packets::packets::{AudioData, OutAudio, OutPacket};
@@ -101,7 +100,7 @@ impl OutMessageTrait for TeamSpeakEvent {
 
 pub(crate) enum TTSEvent {
     NewData((u64, usize), reqwest::Response, MessageHelper),
-    Data(Vec<u8>, MessageHelper),
+    Data(bytes::Bytes, MessageHelper),
     Exit,
 }
 
@@ -205,10 +204,8 @@ async fn delay_send(
         .set(original_hash, raw)
         .await
         .inspect_err(|e| log::error!("Unable write cache: {e:?}"))?
-        .tap(|s| {
-            if s.is_some() {
-                log::trace!("Write {original_hash} to cache");
-            }
+        .inspect(|_| {
+            log::trace!("Write {original_hash} to cache");
         });
     Ok(())
 }

@@ -134,9 +134,7 @@ async fn async_main(
         } => {
             ret?;
         }
-        _ = async {
-            tokio::signal::ctrl_c().await.unwrap();
-        } => {
+        _ = tokio::signal::ctrl_c() => {
             log::warn!("Force exit main function");
         }
     }
