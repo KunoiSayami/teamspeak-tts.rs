@@ -1,8 +1,8 @@
 [package]
 name = "teamspeak-tts"
-version = "5.0.0"
+version = "5.0.1"
 homepage = "https://github.com/KunoiSayami/teamspeak-tts.rs"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 anyhow = "1"
@@ -12,7 +12,7 @@ bytes = "1.10"
 clap = { version = "4", features = ["derive", "cargo"] }
 env_logger = "0.11"
 futures = "0.3"
-kstool-helper-generator = "0.4.4"
+kstool-helper-generator = "0.7"
 log = { version = "0.4", features = [
     "max_level_trace",
     "release_max_level_debug",

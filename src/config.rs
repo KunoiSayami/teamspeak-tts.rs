@@ -7,11 +7,11 @@ use tokio::{fs::read_to_string, sync::RwLock};
 use tsclientlib::ClientDbId;
 
 fn default_nickname() -> String {
-    "tts".to_string()
+    "tts".into()
 }
 
 fn default_level_db() -> String {
-    "tts.db".to_string()
+    "tts.db".into()
 }
 
 #[derive(Clone, Debug, Deserialize)]
