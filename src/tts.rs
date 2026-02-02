@@ -1,13 +1,13 @@
 use std::{
     io::{Cursor, Write},
-    sync::{atomic::AtomicUsize, Arc, RwLock},
+    sync::{Arc, RwLock, atomic::AtomicUsize},
     time::Duration,
 };
 
-use futures::{channel::oneshot, StreamExt};
+use futures::{StreamExt, channel::oneshot};
 use reqwest::{
-    header::{HeaderMap, CONTENT_LENGTH, CONTENT_TYPE, USER_AGENT},
     Response,
+    header::{CONTENT_LENGTH, CONTENT_TYPE, HeaderMap, USER_AGENT},
 };
 use symphonia::core::{
     formats::FormatReader,
@@ -360,7 +360,16 @@ impl Requester {
         let ssml = Self::build_ssml(lang, gender, name, text);
         log::trace!("Request SSML: {ssml:?}");
         let ret = loop {
-            let selected = self.tts.ocp_apim_subscription_key().await?;
+            let selected = match self.tts.ocp_apim_subscription_key().await {
+                Ok(key) => key,
+                Err(e) => {
+                    // KeyStore is empty - all keys have been exhausted or removed
+                    return Err(anyhow::anyhow!(
+                        "No valid API keys available. All keys may be invalid or exhausted: {}",
+                        e
+                    ));
+                }
+            };
             let ret = self
                 .inner
                 .post(self.tts.endpoint())
@@ -370,7 +379,12 @@ impl Requester {
                 .await?;
             log::trace!("Api response: {}", ret.status());
             if ret.status().eq(&reqwest::StatusCode::UNAUTHORIZED) {
-                self.tts.remove_key(&selected).await?;
+                log::debug!("Remove key {selected}");
+                // Ignore errors from remove_key - the key might have already been removed
+                // by another concurrent request
+                if let Err(e) = self.tts.remove_key(&selected).await {
+                    log::debug!("Key removal failed (likely already removed): {e:?}");
+                }
                 continue;
             } else {
                 break ret;
