@@ -8,7 +8,7 @@ edition = "2024"
 anyhow = "1"
 axum = { version = "0.8", features = ["http2", "macros", "ws"] }
 base64 = "0.22"
-bytes = "1.10"
+bytes = "1.11"
 clap = { version = "4", features = ["derive", "cargo"] }
 env_logger = "0.11"
 futures = "0.3"
