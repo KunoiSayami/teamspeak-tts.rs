@@ -32,7 +32,7 @@ symphonia = "0.5"
 tap = "1"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
-toml = "0.9"
+toml = "1"
 tsclientlib = { git = "https://github.com/ReSpeak/tsclientlib", default-features = false }
 tsproto = { git = "https://github.com/ReSpeak/tsclientlib" }
 tsproto-packets = { git = "https://github.com/ReSpeak/tsclientlib" }
