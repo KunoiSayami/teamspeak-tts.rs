@@ -359,6 +359,7 @@ impl Requester {
     ) -> anyhow::Result<Response> {
         let ssml = Self::build_ssml(lang, gender, name, text);
         log::trace!("Request SSML: {ssml:?}");
+        let mut retries = 0u8;
         let ret = loop {
             let selected = match self.tts.ocp_apim_subscription_key().await {
                 Ok(key) => key,
@@ -370,13 +371,24 @@ impl Requester {
                     ));
                 }
             };
-            let ret = self
+            let ret = match self
                 .inner
                 .post(self.tts.endpoint())
                 .body(ssml.as_bytes().to_vec())
                 .headers(Self::build_headers(ssml.len(), &selected))
                 .send()
-                .await?;
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    if retries < 3 {
+                        retries += 1;
+                        log::warn!("Request error (attempt {retries}/3): {e:?}");
+                        continue;
+                    }
+                    return Err(e.into());
+                }
+            };
             log::trace!("Api response: {}", ret.status());
             if ret.status().eq(&reqwest::StatusCode::UNAUTHORIZED) {
                 log::debug!("Remove key {selected}");

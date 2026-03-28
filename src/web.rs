@@ -2,13 +2,13 @@ use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::anyhow;
 use axum::{
+    Extension,
     extract::{
-        ws::{Message, WebSocket},
         ConnectInfo, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
     response::{Html, IntoResponse},
     routing::get,
-    Extension,
 };
 use futures::{SinkExt, StreamExt};
 use kstool_helper_generator::Helper;
@@ -17,10 +17,10 @@ use tokio::sync::{broadcast, mpsc};
 use xxhash_rust::xxh3;
 
 use crate::{
+    MainEvent,
     cache::ConnAgent,
     config::Config,
     tts::{Requester, TTSEvent},
-    MainEvent,
 };
 #[cfg(not(debug_assertions))]
 const INDEX_PAGE: &str = include_str!("html/index.html");

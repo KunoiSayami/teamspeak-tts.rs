@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use futures::{channel::oneshot, future, StreamExt as _, TryStreamExt as _};
+use futures::{StreamExt as _, TryStreamExt as _, channel::oneshot, future};
 use tap::TapOptional as _;
 use tokio::{
-    sync::{mpsc, Notify},
+    sync::{Notify, mpsc},
     task::JoinHandle,
 };
 use tsclientlib::{
-    prelude::OutMessageTrait, ChannelId, ClientDbId, ClientId, Connection, DisconnectOptions,
-    Invoker, OutCommandExt, StreamItem,
+    ChannelId, ClientDbId, ClientId, Connection, DisconnectOptions, Invoker, OutCommandExt,
+    StreamItem, prelude::OutMessageTrait,
 };
 use tsproto::Identity;
 use tsproto_packets::packets::OutCommand;

@@ -1,6 +1,6 @@
 [package]
 name = "teamspeak-tts"
-version = "5.0.2"
+version = "5.0.3"
 homepage = "https://github.com/KunoiSayami/teamspeak-tts.rs"
 edition = "2024"
 
@@ -17,8 +17,8 @@ log = { version = "0.4", features = [
     "max_level_trace",
     "release_max_level_debug",
 ] }
-rand = "0.9"
-reqwest = { version = "0.12", default-features = false, features = [
+rand = "0.10"
+reqwest = { version = "0.13", default-features = false, features = [
     "http2",
     "stream",
     "hickory-dns",
@@ -40,7 +40,7 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [features]
 default = ["full"]
-rustls = ["reqwest/rustls-tls"]
+rustls = ["reqwest/rustls"]
 spin-sleep = ["spin_sleep"]
 full = ["spin-sleep", "rustls"]
 measure-time = []
